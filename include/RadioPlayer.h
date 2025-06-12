@@ -10,10 +10,15 @@
 #include <thread>
 #include <mutex>
 #include "RadioStream.h"
-#include "nlohmann/json_fwd.hpp" // Use forward declaration
+#include "nlohmann/json_fwd.hpp"
 
-// Forward declare UIManager to avoid circular dependency
 class UIManager;
+
+// NEW: Enum to represent which panel has user focus.
+enum class ActivePanel {
+    STATIONS,
+    HISTORY
+};
 
 class RadioPlayer {
 public:
@@ -29,6 +34,10 @@ private:
     std::atomic<bool> m_quit_flag;
     std::atomic<bool> m_small_mode_active;
     
+    // NEW: State variables for UI focus and scrolling
+    ActivePanel m_active_panel;
+    int m_history_scroll_offset;
+
     // History
     std::unique_ptr<nlohmann::json> m_song_history;
     std::mutex m_history_mutex;

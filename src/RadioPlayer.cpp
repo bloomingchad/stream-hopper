@@ -22,6 +22,8 @@ RadioPlayer::RadioPlayer(std::vector<std::pair<std::string, std::string>> statio
       m_active_station_idx(0),
       m_quit_flag(false),
       m_small_mode_active(false),
+      m_active_panel(ActivePanel::STATIONS), // Initialize focus on STATIONS
+      m_history_scroll_offset(0),            // Initialize scroll offset to 0
       m_song_history(std::make_unique<json>(json::object())),
       m_small_mode_start_time(std::chrono::steady_clock::now()),
       m_station_switch_duration(0)
@@ -56,6 +58,7 @@ void RadioPlayer::run() {
 
     while (!m_quit_flag) {
         if (needs_redraw) {
+            // We will update this call in a later step to pass the new state
             m_ui->draw(m_stations, m_active_station_idx, m_small_mode_active, *m_song_history);
             needs_redraw = false;
         }
@@ -103,7 +106,7 @@ void RadioPlayer::on_key_down() {
 }
 
 void RadioPlayer::on_key_enter() {
-    if (!m_small_mode_active) {
+    if (!m_stations.empty()) {
         toggle_mute_station(m_active_station_idx);
     }
 }
@@ -114,6 +117,11 @@ void RadioPlayer::handle_input(int ch) {
         case KEY_DOWN:  on_key_down(); break;
         case '\n': case '\r': case KEY_ENTER: on_key_enter(); break;
         case 's': case 'S': toggle_small_mode(); break;
+        case 'f': case 'F':
+            if (!m_stations.empty()) {
+                m_stations[m_active_station_idx].toggleFavorite();
+            }
+            break;
         case 'q': case 'Q': m_quit_flag = true; break;
     }
 }
@@ -122,11 +130,13 @@ void RadioPlayer::toggle_small_mode() {
     m_small_mode_active = !m_small_mode_active;
     if (m_small_mode_active) {
         m_small_mode_start_time = std::chrono::steady_clock::now();
-        RadioStream& current_station = m_stations[m_active_station_idx];
-        if (current_station.isMuted()) {
-            toggle_mute_station(m_active_station_idx);
-        } else if (current_station.getCurrentVolume() < 50.0) {
-            fade_audio(current_station, current_station.getCurrentVolume(), 100.0, FADE_TIME_MS);
+        if(!m_stations.empty()) {
+            RadioStream& current_station = m_stations[m_active_station_idx];
+            if (current_station.isMuted()) {
+                toggle_mute_station(m_active_station_idx);
+            } else if (current_station.getCurrentVolume() < 50.0) {
+                fade_audio(current_station, current_station.getCurrentVolume(), 100.0, FADE_TIME_MS);
+            }
         }
     }
 }
@@ -144,19 +154,25 @@ int RadioPlayer::get_remaining_seconds_for_current_station() {
 }
 
 void RadioPlayer::switch_station(int new_idx) {
-    if (new_idx == m_active_station_idx) return;
+    if (new_idx < 0 || new_idx >= (int)m_stations.size() || new_idx == m_active_station_idx) return;
+    
     RadioStream& current_station = m_stations[m_active_station_idx];
     if (!current_station.isMuted()) {
         fade_audio(current_station, current_station.getCurrentVolume(), 0.0, FADE_TIME_MS);
     }
+    
     RadioStream& new_station = m_stations[new_idx];
     if (!new_station.isMuted()) {
         fade_audio(new_station, new_station.getCurrentVolume(), 100.0, FADE_TIME_MS);
     }
     m_active_station_idx = new_idx;
+    
+    // NEW: Reset scroll offset when changing station
+    m_history_scroll_offset = 0;
 }
 
 void RadioPlayer::toggle_mute_station(int station_idx) {
+    if (station_idx < 0 || station_idx >= (int)m_stations.size()) return;
     RadioStream& station = m_stations[station_idx];
     if (station.isMuted()) {
         station.setMuted(false);
@@ -223,7 +239,6 @@ void RadioPlayer::on_title_changed(RadioStream& station, const std::string& new_
         return;
     }
     
-    // Add to full history for saving to disk
     auto now = std::chrono::system_clock::now();
     std::time_t now_c = std::chrono::system_clock::to_time_t(now);
     char full_time_buf[100];
