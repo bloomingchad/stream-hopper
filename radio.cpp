@@ -8,6 +8,7 @@
 // - Mute functionality
 // - Restructured
 // - JSON Station Name Logging
+// - Breakdown of UI, Main Loop, and Event Handlers
 // - Small Mode: Auto-rotation through all stations
 // Thanks to gemini-2.5-pro-preview-06-05 and claude-sonnet-4-20250514
 
@@ -200,15 +201,33 @@ public:
     ~UIManager() {
         if (stdscr != NULL && !isendwin()) { endwin(); }
     }
+
     void draw(const std::vector<RadioStream>& stations, int active_station_idx, bool small_mode_active = false, int remaining_seconds = 0) {
         clear();
+        
+        draw_header(small_mode_active, remaining_seconds);
+        
+        if (!stations.empty()) {
+            draw_station_list(stations, active_station_idx, small_mode_active);
+            draw_footer(small_mode_active);
+        }
+        
+        refresh();
+    }
+    
+    int getInput() { return getch(); }
+
+private:
+    void draw_header(bool small_mode_active, int remaining_seconds) {
         if (small_mode_active) {
             mvprintw(0, 0, "Radio Switcher - SMALL MODE ACTIVE | S: Exit Small Mode | Q: Quit");
             mvprintw(1, 0, "Auto-rotating through all stations. Time left for current: %d seconds", remaining_seconds);
         } else {
             mvprintw(0, 0, "Radio Switcher (Refactored) | Q: Quit | Enter: Mute/Unmute | S: Small Mode");
         }
-        
+    }
+
+    void draw_station_list(const std::vector<RadioStream>& stations, int active_station_idx, bool small_mode_active) {
         for (size_t i = 0; i < stations.size(); ++i) {
             const auto& station = stations[i];
             bool is_active = (static_cast<int>(i) == active_station_idx);
@@ -219,15 +238,15 @@ public:
                      station.getCurrentTitle().c_str(), station.getCurrentVolume());
             if (is_active) attroff(A_REVERSE);
         }
-        
-        if (!stations.empty() && !small_mode_active) {
+    }
+
+    void draw_footer(bool small_mode_active) {
+        if (!small_mode_active) {
             mvprintw(LINES - 2, 0, "Use UP/DOWN arrows to switch stations.");
         } else if (small_mode_active) {
             mvprintw(LINES - 2, 0, "Small Mode: Discovering radio stations automatically...");
         }
-        refresh();
     }
-    int getInput() { return getch(); }
 };
 
 
@@ -247,10 +266,7 @@ public:
             m_stations.emplace_back(i, station_data[i].first, station_data[i].second);
         }
         
-        // Calculate time per station for small mode
         m_station_switch_duration = SMALL_MODE_TOTAL_TIME_SECONDS / static_cast<int>(m_stations.size());
-
-        // ADDED: Load previous song history and initialize for current stations
         load_history_from_disk();
         
         for (size_t i = 0; i < m_stations.size(); ++i) {
@@ -264,48 +280,31 @@ public:
         if (m_mpv_event_thread.joinable()) {
             m_mpv_event_thread.join();
         }
-        // ADDED: Save final history on exit
         save_history_to_disk();
     }
     
     void run() {
         m_mpv_event_thread = std::thread(&RadioPlayer::mpv_event_loop, this);
         bool needs_redraw = true;
-        
+
         while (!m_quit_flag) {
-            if (needs_redraw) {
-                int remaining_seconds = 0;
-                if (m_small_mode_active) {
-                    remaining_seconds = get_remaining_seconds_for_current_station();
-                }
-                m_ui->draw(m_stations, m_active_station_idx, m_small_mode_active, remaining_seconds);
-                needs_redraw = false;
-            }
-            
-            // Handle small mode auto-switching
-            if (m_small_mode_active && should_switch_station()) {
-                int next_station = (m_active_station_idx + 1) % static_cast<int>(m_stations.size());
-                switch_station(next_station);
-                m_small_mode_start_time = std::chrono::steady_clock::now();
-                needs_redraw = true;
-            }
-            
+            // Phase 1: Process user input
             int ch = m_ui->getInput();
             if (ch != ERR) {
                 handle_input(ch);
                 needs_redraw = true;
             }
             
-            for (const auto& station : m_stations) {
-                if (station.isFading()) {
-                    needs_redraw = true;
-                    break;
-                }
-            }
-            
-            // Update display more frequently in small mode to show countdown
-            if (m_small_mode_active) {
+            // Phase 2: Update time-based and other automatic states
+            if (update_state()) {
                 needs_redraw = true;
+            }
+
+            // Phase 3: Render UI if anything changed
+            if (needs_redraw) {
+                int remaining_seconds = m_small_mode_active ? get_remaining_seconds_for_current_station() : 0;
+                m_ui->draw(m_stations, m_active_station_idx, m_small_mode_active, remaining_seconds);
+                needs_redraw = false;
             }
             
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -313,37 +312,71 @@ public:
     }
 
 private:
+    bool update_state() {
+        // Handle small mode auto-switching
+        if (m_small_mode_active && should_switch_station()) {
+            int next_station = (m_active_station_idx + 1) % static_cast<int>(m_stations.size());
+            switch_station(next_station);
+            m_small_mode_start_time = std::chrono::steady_clock::now();
+            return true; // State changed
+        }
+
+        // Check if any station is currently fading its audio
+        for (const auto& station : m_stations) {
+            if (station.isFading()) {
+                return true; // Fading requires continuous redraw
+            }
+        }
+        
+        // In small mode, the countdown timer always needs to be updated on screen
+        if (m_small_mode_active) {
+            return true; // Small mode requires continuous redraw
+        }
+
+        return false; // No state change that needs a redraw
+    }
+    
     std::vector<RadioStream> m_stations;
     std::unique_ptr<UIManager> m_ui;
     int m_active_station_idx;
     std::atomic<bool> m_quit_flag;
     std::thread m_mpv_event_thread;
     
-    // Small mode variables
     std::atomic<bool> m_small_mode_active;
     std::chrono::steady_clock::time_point m_small_mode_start_time;
-    int m_station_switch_duration; // seconds per station
+    int m_station_switch_duration;
 
-    // ADDED: For JSON song history
     nlohmann::json m_song_history;
     std::mutex m_history_mutex;
+
+    void on_key_up() {
+        if (!m_small_mode_active && m_active_station_idx > 0) { 
+            switch_station(m_active_station_idx - 1); 
+        }
+    }
+
+    void on_key_down() {
+        if (!m_small_mode_active && m_active_station_idx < static_cast<int>(m_stations.size()) - 1) { 
+            switch_station(m_active_station_idx + 1); 
+        }
+    }
+
+    void on_key_enter() {
+        if (!m_small_mode_active) {
+            toggle_mute_station(m_active_station_idx);
+        }
+    }
 
     void handle_input(int ch) {
         switch (ch) {
             case KEY_UP:
-                if (!m_small_mode_active && m_active_station_idx > 0) { 
-                    switch_station(m_active_station_idx - 1); 
-                }
+                on_key_up();
                 break;
             case KEY_DOWN:
-                if (!m_small_mode_active && m_active_station_idx < static_cast<int>(m_stations.size()) - 1) { 
-                    switch_station(m_active_station_idx + 1); 
-                }
+                on_key_down();
                 break;
             case '\n': case '\r': case KEY_ENTER:
-                if (!m_small_mode_active) {
-                    toggle_mute_station(m_active_station_idx);
-                }
+                on_key_enter();
                 break;
             case 's': case 'S':
                 toggle_small_mode();
@@ -356,14 +389,11 @@ private:
 
     void toggle_small_mode() {
         if (m_small_mode_active) {
-            // Exit small mode
             m_small_mode_active = false;
         } else {
-            // Enter small mode
             m_small_mode_active = true;
             m_small_mode_start_time = std::chrono::steady_clock::now();
             
-            // Ensure current station is playing and not muted
             RadioStream& current_station = m_stations[m_active_station_idx];
             if (current_station.isMuted()) {
                 current_station.setMuted(false);
@@ -455,66 +485,74 @@ private:
         }
     }
 
+    RadioStream* find_station_by_id(int station_id) {
+        auto it = std::find_if(m_stations.begin(), m_stations.end(), 
+                               [station_id](const RadioStream& s) { return s.getID() == station_id; });
+        return (it != m_stations.end()) ? &(*it) : nullptr;
+    }
+
+    void on_title_changed(RadioStream& station, const std::string& new_title) {
+        if (new_title == station.getCurrentTitle() || new_title == "N/A" || new_title == "Initializing...") {
+            if (new_title != station.getCurrentTitle()) {
+                 station.setCurrentTitle(new_title);
+            }
+            return;
+        }
+
+        auto now = std::chrono::system_clock::now();
+        std::time_t now_c = std::chrono::system_clock::to_time_t(now);
+        char time_buf[100];
+        std::strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", std::localtime(&now_c));
+
+        nlohmann::json song_entry = {std::string(time_buf), new_title};
+        {
+            std::lock_guard<std::mutex> lock(m_history_mutex);
+            m_song_history[station.getName()].push_back(song_entry);
+        }
+        
+        save_history_to_disk();
+        station.setCurrentTitle(new_title);
+    }
+
+    void on_stream_eof(RadioStream& station) {
+        station.setCurrentTitle("Stream Error - Reconnecting...");
+        const char* cmd[] = {"loadfile", station.getURL().c_str(), "replace", nullptr};
+        mpv_command_async(station.getMpvHandle(), 0, cmd);
+    }
+
     void handle_mpv_event(mpv_event* event) {
-        if (event->event_id == MPV_EVENT_PROPERTY_CHANGE) {
-            mpv_event_property* prop = (mpv_event_property*)event->data;
-            int station_id = event->reply_userdata;
-            auto it = std::find_if(m_stations.begin(), m_stations.end(), 
-                                   [station_id](const RadioStream& s) { return s.getID() == station_id; });
-            if (it != m_stations.end()) {
-                RadioStream& station = *it;
-                if (strcmp(prop->name, "media-title") == 0 && prop->format == MPV_FORMAT_STRING) {
-                    char* title_cstr = *(char**)prop->data;
-                    std::string new_title = title_cstr ? title_cstr : "N/A";
+        if (event->event_id != MPV_EVENT_PROPERTY_CHANGE) {
+            return;
+        }
 
-                    // Only log if the title has actually changed to something meaningful.
-                    if (new_title != station.getCurrentTitle()) {
-                        if (new_title != "N/A" && new_title != "Initializing...") {
-                            // Get current time as a string
-                            auto now = std::chrono::system_clock::now();
-                            std::time_t now_c = std::chrono::system_clock::to_time_t(now);
-                            char time_buf[100];
-                            std::strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", std::localtime(&now_c));
+        mpv_event_property* prop = (mpv_event_property*)event->data;
+        RadioStream* station = find_station_by_id(event->reply_userdata);
+        if (!station) {
+            return;
+        }
 
-                            // Create JSON entry: ["time", "title"]
-                            nlohmann::json song_entry = {std::string(time_buf), new_title};
-                            
-                            { // Lock before modifying the shared history object
-                                std::lock_guard<std::mutex> lock(m_history_mutex);
-                                m_song_history[station.getName()].push_back(song_entry);
-                            }
-                            // Flush the updated history to disk immediately
-                            save_history_to_disk();
-                        }
-                        // Always update the station's current title for the UI
-                        station.setCurrentTitle(new_title);
-                    }
-                } else if (strcmp(prop->name, "eof-reached") == 0 && prop->format == MPV_FORMAT_FLAG) {
-                    if (*(int*)prop->data) {
-                        station.setCurrentTitle("Stream Error - Reconnecting...");
-                        const char* cmd[] = {"loadfile", station.getURL().c_str(), "replace", nullptr};
-                        mpv_command_async(station.getMpvHandle(), 0, cmd);
-                    }
-                }
+        if (strcmp(prop->name, "media-title") == 0 && prop->format == MPV_FORMAT_STRING) {
+            char* title_cstr = *(char**)prop->data;
+            on_title_changed(*station, title_cstr ? title_cstr : "N/A");
+        } else if (strcmp(prop->name, "eof-reached") == 0 && prop->format == MPV_FORMAT_FLAG) {
+            if (*(int*)prop->data) {
+                on_stream_eof(*station);
             }
         }
     }
     
-    // ADDED: Methods to load and save the JSON song history
     void load_history_from_disk() {
         std::ifstream i("radio_history.json");
         if (i.is_open()) {
             try {
                 i >> m_song_history;
                 if (!m_song_history.is_object()) {
-                    m_song_history = nlohmann::json::object(); // Ensure it's a JSON object
+                    m_song_history = nlohmann::json::object();
                 }
             } catch (...) {
-                // If file is corrupted or not valid JSON, start fresh
                 m_song_history = nlohmann::json::object();
             }
         }
-        // Ensure all currently configured stations have an entry in the history
         for (const auto& station : m_stations) {
             if (!m_song_history.contains(station.getName())) {
                 m_song_history[station.getName()] = nlohmann::json::array();
@@ -526,7 +564,6 @@ private:
         std::lock_guard<std::mutex> lock(m_history_mutex);
         std::ofstream o("radio_history.json");
         if (o.is_open()) {
-            // Write the JSON object to the file with pretty printing
             o << std::setw(4) << m_song_history << std::endl;
         }
     }
