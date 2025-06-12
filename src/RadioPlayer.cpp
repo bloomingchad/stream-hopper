@@ -118,8 +118,6 @@ void RadioPlayer::handle_input(int ch) {
                     switch_station(m_active_station_idx + 1);
                 }
             } else if (m_active_panel == ActivePanel::HISTORY) {
-                // *** THIS IS THE FIX ***
-                // Add a boundary check to prevent scrolling past the end.
                 const auto& current_station_name = m_stations[m_active_station_idx].getName();
                 if (m_song_history->contains(current_station_name)) {
                     const auto& history_list = (*m_song_history)[current_station_name];
@@ -273,7 +271,11 @@ void RadioPlayer::on_title_changed(RadioStream& station, const std::string& new_
     auto now = std::chrono::system_clock::now();
     std::time_t now_c = std::chrono::system_clock::to_time_t(now);
     char full_time_buf[100];
+    
+    // *** THIS IS THE FIX ***
+    // The format string is now corrected to include the full date and time.
     std::strftime(full_time_buf, sizeof(full_time_buf), "%Y-%m-%d %H:%M:%S", std::localtime(&now_c));
+    
     json history_entry_for_file = { std::string(full_time_buf), new_title };
     
     {

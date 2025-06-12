@@ -21,28 +21,23 @@ std::string truncate_string(const std::string& str, size_t width) {
     return str;
 }
 
-// *** NEW HELPER FUNCTION ***
-// Formats a timestamp string based on how old it is.
 std::string format_history_timestamp(const std::string& ts_str) {
     std::tm tm = {};
     std::stringstream ss(ts_str);
     ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
     if (ss.fail()) {
-        // Fallback for just time "HH:MM"
         return ts_str.substr(0, 5);
     }
 
     auto entry_time = std::chrono::system_clock::from_time_t(std::mktime(&tm));
     auto now = std::chrono::system_clock::now();
     
-    // Get the beginning of today
     time_t t_now = std::chrono::system_clock::to_time_t(now);
     std::tm tm_now = *std::localtime(&t_now);
     tm_now.tm_hour = 0; tm_now.tm_min = 0; tm_now.tm_sec = 0;
     auto today_start = std::chrono::system_clock::from_time_t(std::mktime(&tm_now));
 
     if (entry_time >= today_start) {
-        // It's from today, show only time
         char buf[10];
         std::strftime(buf, sizeof(buf), "%H:%M", &tm);
         return std::string(buf);
@@ -50,11 +45,9 @@ std::string format_history_timestamp(const std::string& ts_str) {
 
     auto yesterday_start = today_start - std::chrono::hours(24);
     if (entry_time >= yesterday_start) {
-        // It's from yesterday
         return "Yesterday";
     }
 
-    // It's older, show date e.g. "Jul 15"
     char buf[20];
     std::strftime(buf, sizeof(buf), "%b %d", &tm);
     return std::string(buf);
@@ -118,7 +111,7 @@ void UIManager::draw_header_bar(int width, double current_volume) {
     tm* ltm = localtime(&now);
     char time_str[10];
     strftime(time_str, sizeof(time_str), "%H:%M", ltm);
-    std::string full_header = " STREAM HOPPER  |  LIVE  |  VOL: " + std::to_string((int)current_volume) + "%  |  " + time_str + " UTC ";
+    std::string full_header = " STREAM HOPPER  |  LIVE  |  🔊 VOL: " + std::to_string((int)current_volume) + "%  |  🕐 " + time_str + " UTC ";
     attron(A_REVERSE);
     mvprintw(0, 0, "%s", std::string(width, ' ').c_str());
     mvprintw(0, 1, "%s", truncate_string(full_header, width - 2).c_str());
@@ -128,11 +121,11 @@ void UIManager::draw_header_bar(int width, double current_volume) {
 void UIManager::draw_footer_bar(int y, int width, bool is_compact, bool is_small_mode) {
     std::string footer_text;
     if (is_small_mode) {
-        footer_text = " [S] Exit Small Mode   [Q] Quit ";
+        footer_text = " [S] Exit Small Mode   [🚪] Quit ";
     } else if(is_compact) {
-        footer_text = " [↑↓] Move [↲] Play [F] Fav [S] Full [Q] Quit ";
+        footer_text = " [🧭] Move [⏯️] Play [⭐] Fav [S] Full [🚪] Quit ";
     } else {
-        footer_text = " [↑↓] Navigate   [↲] Play/Mute   [Tab] Switch Panel   [F] Favorite   [Q] Quit ";
+        footer_text = " [🧭] Navigate   [⏯️] Play/Mute   [🔄] Switch Panel   [⭐] Favorite   [🚪] Quit ";
     }
     
     attron(A_REVERSE);
@@ -140,7 +133,7 @@ void UIManager::draw_footer_bar(int y, int width, bool is_compact, bool is_small
     if ((int)footer_text.length() < width) {
         mvprintw(y, (width - footer_text.length()) / 2, "%s", footer_text.c_str());
     } else {
-        mvprintw(y, 1, " [Q] Quit ");
+        mvprintw(y, 1, " [🚪] Quit ");
     }
     attroff(A_REVERSE);
 }
@@ -151,7 +144,7 @@ void UIManager::draw_compact_mode(int width, int height, const std::vector<Radio
     const RadioStream& active_station = stations[active_idx];
     
     int box_h = 6;
-    draw_box(2, 1, width - 2, box_h, "NOW PLAYING", false);
+    draw_box(2, 1, width - 2, box_h, "▶️  NOW PLAYING", false);
 
     std::string fav_star = active_station.isFavorite() ? "⭐ " : "";
     mvwprintw(stdscr, 3, 3, "%s", truncate_string(fav_star + active_station.getName(), width - 6).c_str());
@@ -223,7 +216,7 @@ void UIManager::draw_stations_panel(int y, int x, int w, int h, const std::vecto
 }
 
 void UIManager::draw_now_playing_panel(int y, int x, int w, int h, const RadioStream& station) {
-    draw_box(y, x, w, h, "NOW PLAYING", false);
+    draw_box(y, x, w, h, "▶️  NOW PLAYING", false);
     int inner_w = w - 4;
 
     std::string title = station.getCurrentTitle();
@@ -248,10 +241,9 @@ void UIManager::draw_now_playing_panel(int y, int x, int w, int h, const RadioSt
     }
 }
 
-// UPDATED: This function now uses the new date formatting helper.
 void UIManager::draw_history_panel(int y, int x, int w, int h, const RadioStream& station, 
                                    const nlohmann::json& history, bool is_focused, int scroll_offset) {
-    draw_box(y, x, w, h, "RECENT HISTORY", is_focused);
+    draw_box(y, x, w, h, "📝 RECENT HISTORY", is_focused);
     int inner_w = w - 5;
     int panel_height = h - 2;
 
@@ -272,10 +264,8 @@ void UIManager::draw_history_panel(int y, int x, int w, int h, const RadioStream
                 std::string full_ts = entry[0].get<std::string>();
                 std::string title_str = entry[1].get<std::string>();
                 
-                // Use the new helper function
                 std::string time_str = format_history_timestamp(full_ts);
                 
-                // Right-align the time string for a clean look
                 std::stringstream line_ss;
                 line_ss << std::setw(9) << std::left << time_str << "│ " << title_str;
                 
