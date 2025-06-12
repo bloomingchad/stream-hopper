@@ -19,11 +19,10 @@ public:
 private:
     // Main layout drawers
     void draw_header_bar(int width, double current_volume);
-    void draw_footer_bar(int y, int width, bool is_compact); // Added bool flag
+    // THIS IS THE FIX: Added the final bool parameter
+    void draw_footer_bar(int y, int width, bool is_compact, bool is_small_mode);
     void draw_full_mode(int width, int height, const std::vector<RadioStream>& stations, int active_station_idx, const nlohmann::json& history);
-    
-    // NEW: Compact mode layout drawer
-    void draw_compact_mode(int width, int height, const std::vector<RadioStream>& stations, int active_station_idx);
+    void draw_compact_mode(int width, int height, const std::vector<RadioStream>& stations, int active_idx);
 
     // Panel content drawers (for full mode)
     void draw_stations_panel(int y, int x, int w, int h, const std::vector<RadioStream>& stations, int active_station_idx);

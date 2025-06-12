@@ -7,7 +7,7 @@
 #include <atomic>
 #include <mutex>
 #include <vector>
-#include "nlohmann/json_fwd.hpp" // Use forward declaration
+#include "nlohmann/json_fwd.hpp"
 
 class RadioStream {
 public:
@@ -31,7 +31,7 @@ public:
     double getPreMuteVolume() const;
     bool isFading() const;
     double getTargetVolume() const;
-    std::string getStatusString(bool is_active, bool is_small_mode) const;
+    bool isFavorite() const;
 
     // Setters
     void setCurrentTitle(const std::string& title);
@@ -40,28 +40,27 @@ public:
     void setPreMuteVolume(double vol);
     void setFading(bool fading);
     void setTargetVolume(double vol);
+    void toggleFavorite();
     
 private:
     void destroy();
     
-    // Core properties
     int m_id;
     std::string m_name;
     std::string m_url;
     mpv_handle* m_mpv;
     
-    // State properties
     std::string m_current_title;
     mutable std::mutex m_title_mutex;
     
-    // Volume/Mute properties
     std::atomic<bool> m_is_muted;
     std::atomic<double> m_current_volume;
     std::atomic<double> m_pre_mute_volume;
     
-    // Fading properties
     std::atomic<bool> m_is_fading;
     std::atomic<double> m_target_volume;
+    
+    std::atomic<bool> m_is_favorite{false};
 };
 
 #endif // RADIOSTREAM_H

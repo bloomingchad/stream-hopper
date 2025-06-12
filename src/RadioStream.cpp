@@ -2,26 +2,25 @@
 #include "RadioStream.h"
 #include "Utils.h"
 #include <stdexcept>
-#include <utility> // For std::move
-
-// --- Implementation of RadioStream methods ---
+#include <utility>
 
 RadioStream::RadioStream(int id, std::string name, std::string url)
     : m_id(id), m_name(std::move(name)), m_url(std::move(url)), m_mpv(nullptr),
       m_current_title("Initializing..."), m_is_muted(false), m_current_volume(0.0),
-      m_pre_mute_volume(100.0), m_is_fading(false), m_target_volume(0.0) {}
+      m_pre_mute_volume(100.0), m_is_fading(false), m_target_volume(0.0), m_is_favorite(false) {}
 
 RadioStream::~RadioStream() { destroy(); }
 
 RadioStream::RadioStream(RadioStream &&other) noexcept
     : m_id(other.m_id), m_name(std::move(other.m_name)),
       m_url(std::move(other.m_url)), m_mpv(other.m_mpv),
-      m_current_title(other.getCurrentTitle()), // Use getter for mutex safety
+      m_current_title(other.getCurrentTitle()),
       m_is_muted(other.m_is_muted.load()),
       m_current_volume(other.m_current_volume.load()),
       m_pre_mute_volume(other.m_pre_mute_volume.load()),
       m_is_fading(other.m_is_fading.load()),
-      m_target_volume(other.m_target_volume.load())
+      m_target_volume(other.m_target_volume.load()),
+      m_is_favorite(other.m_is_favorite.load())
 {
     other.m_mpv = nullptr;
 }
@@ -33,12 +32,13 @@ RadioStream &RadioStream::operator=(RadioStream &&other) noexcept {
     m_name = std::move(other.m_name);
     m_url = std::move(other.m_url);
     m_mpv = other.m_mpv;
-    setCurrentTitle(other.getCurrentTitle()); // Use setter for mutex safety
+    setCurrentTitle(other.getCurrentTitle());
     m_is_muted.store(other.m_is_muted.load());
     m_current_volume.store(other.m_current_volume.load());
     m_pre_mute_volume.store(other.m_pre_mute_volume.load());
     m_is_fading.store(other.m_is_fading.load());
     m_target_volume.store(other.m_target_volume.load());
+    m_is_favorite.store(other.m_is_favorite.load());
     other.m_mpv = nullptr;
   }
   return *this;
@@ -66,8 +66,10 @@ void RadioStream::initialize(double initial_volume) {
   
   m_current_volume = initial_volume;
   m_target_volume = initial_volume;
-  if(initial_volume == 0.0) {
-      m_is_muted = true; // Start muted if volume is 0
+  if(initial_volume > 0) {
+      m_is_muted = false;
+  } else {
+      m_is_muted = true;
   }
   mpv_set_property_async(m_mpv, 0, "volume", MPV_FORMAT_DOUBLE, &initial_volume);
 }
@@ -77,15 +79,6 @@ void RadioStream::destroy() {
     mpv_terminate_destroy(m_mpv);
     m_mpv = nullptr;
   }
-}
-
-std::string RadioStream::getStatusString(bool is_active, bool is_small_mode) const {
-  if (m_is_muted) return "Muted";
-  if (m_is_fading) {
-    return m_target_volume > m_current_volume ? "Fading In" : "Fading Out";
-  }
-  if (is_small_mode && is_active) return "Auto-Playing";
-  return is_active ? "Playing" : "Silent";
 }
 
 int RadioStream::getID() const { return m_id; }
@@ -113,3 +106,5 @@ bool RadioStream::isFading() const { return m_is_fading; }
 void RadioStream::setFading(bool fading) { m_is_fading = fading; }
 double RadioStream::getTargetVolume() const { return m_target_volume; }
 void RadioStream::setTargetVolume(double vol) { m_target_volume = vol; }
+bool RadioStream::isFavorite() const { return m_is_favorite; }
+void RadioStream::toggleFavorite() { m_is_favorite = !m_is_favorite; }

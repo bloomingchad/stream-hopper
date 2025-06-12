@@ -7,12 +7,11 @@
 #include <chrono>
 #include <ctime>
 #include <algorithm>
+#include <locale.h>
 #include "nlohmann/json.hpp"
 
-// Define a threshold for switching to compact mode
 #define COMPACT_MODE_WIDTH 80
 
-// Helper function to truncate strings
 std::string truncate_string(const std::string& str, size_t width) {
     if (width > 3 && str.length() > width) {
         return str.substr(0, width - 3) + "...";
@@ -21,6 +20,14 @@ std::string truncate_string(const std::string& str, size_t width) {
 }
 
 UIManager::UIManager() {
+    // Set locale for wide character (emoji) support in ncurses
+    setlocale(LC_ALL, "");
+    
+    // *** THIS IS THE FIX ***
+    // Reset the numeric locale to "C" (the default) so that libraries like
+    // mpv, which expect a '.' decimal separator, do not break.
+    setlocale(LC_NUMERIC, "C");
+
     initscr();
     cbreak();
     noecho();
@@ -39,7 +46,6 @@ UIManager::~UIManager() {
     }
 }
 
-// Main draw function now acts as a dispatcher based on terminal width
 void UIManager::draw(const std::vector<RadioStream>& stations, int active_station_idx, bool small_mode_active, const nlohmann::json& history) {
     clear();
     int height, width;
@@ -53,12 +59,12 @@ void UIManager::draw(const std::vector<RadioStream>& stations, int active_statio
     
     draw_header_bar(width, display_vol);
 
-    if (width < COMPACT_MODE_WIDTH) {
+    if (width < COMPACT_MODE_WIDTH || small_mode_active) {
         draw_compact_mode(width, height, stations, active_station_idx);
-        draw_footer_bar(height - 1, width, true);
+        draw_footer_bar(height - 1, width, true, small_mode_active);
     } else {
         draw_full_mode(width, height, stations, active_station_idx, history);
-        draw_footer_bar(height - 1, width, false);
+        draw_footer_bar(height - 1, width, false, small_mode_active);
     }
     
     refresh();
@@ -73,100 +79,71 @@ void UIManager::draw_header_bar(int width, double current_volume) {
     tm* ltm = localtime(&now);
     char time_str[10];
     strftime(time_str, sizeof(time_str), "%H:%M", ltm);
-
-    std::string line1 = "STREAM HOPPER";
-    std::string line2 = "LIVE";
-    std::string line3 = "VOL: " + std::to_string((int)current_volume) + "%";
-    std::string line4 = std::string(time_str) + " UTC";
-    
-    std::string full_header = " " + line1 + "  |  " + line2 + "  |  " + line3 + "  |  " + line4 + " ";
-
+    std::string full_header = " STREAM HOPPER  |  LIVE  |  VOL: " + std::to_string((int)current_volume) + "%  |  " + time_str + " UTC ";
     attron(A_REVERSE);
     mvprintw(0, 0, "%s", std::string(width, ' ').c_str());
-    if((int)full_header.length() < width) {
-       mvprintw(0, 1, full_header.c_str());
-    } else {
-       mvprintw(0, 1, " Hopper ");
-    }
+    mvprintw(0, 1, "%s", truncate_string(full_header, width - 2).c_str());
     attroff(A_REVERSE);
 }
 
-
-void UIManager::draw_footer_bar(int y, int width, bool is_compact) {
+void UIManager::draw_footer_bar(int y, int width, bool is_compact, bool is_small_mode) {
     std::string footer_text;
-    if(is_compact) {
-        footer_text = " [↑↓] Move [↲] Play [Q] Quit ";
+    if (is_small_mode) {
+        footer_text = " [S] Exit Small Mode   [Q] Quit ";
+    } else if(is_compact) {
+        footer_text = " [↑↓] Move [↲] Play [F] Fav [S] Full [Q] Quit ";
     } else {
-        footer_text = " [↑↓] Navigate   [↲] Play/Mute   [S] Small Mode   [Q] Quit ";
+        footer_text = " [↑↓] Navigate   [↲] Play/Mute   [F] Favorite   [S] Compact   [Q] Quit ";
     }
     
     attron(A_REVERSE);
-    mvprintw(y, 0, "%*s", width, ""); // Clear line
+    mvprintw(y, 0, "%*s", width, "");
     if ((int)footer_text.length() < width) {
         mvprintw(y, (width - footer_text.length()) / 2, "%s", footer_text.c_str());
+    } else {
+        mvprintw(y, 1, " [Q] Quit ");
     }
     attroff(A_REVERSE);
 }
 
-// NEW: Implementation for the compact layout
-void UIManager::draw_compact_mode(int width, int height, const std::vector<RadioStream>& stations, int active_station_idx) {
+void UIManager::draw_compact_mode(int width, int height, const std::vector<RadioStream>& stations, int active_idx) {
     if (stations.empty()) return;
     
-    const RadioStream& active_station = stations[active_station_idx];
+    const RadioStream& active_station = stations[active_idx];
     
-    // Draw "Now Playing" box
     int box_h = 6;
     draw_box(2, 1, width - 2, box_h, "NOW PLAYING");
 
-    // --- Content for Now Playing box ---
-    // Title
-    mvwprintw(stdscr, 4, 3, "%s", truncate_string(active_station.getCurrentTitle(), width - 6).c_str());
+    std::string fav_star = active_station.isFavorite() ? "⭐ " : "";
+    mvwprintw(stdscr, 3, 3, "%s", truncate_string(fav_star + active_station.getName(), width - 6).c_str());
+    mvwprintw(stdscr, 4, 5, "%s", truncate_string(active_station.getCurrentTitle(), width - 8).c_str());
     
-    // Volume Bar
-    int bar_width = width - 15; // Space for icon and percentage
-    if (bar_width > 0) {
-        double vol_percent = active_station.getCurrentVolume() / 100.0;
-        int filled_width = static_cast<int>(vol_percent * bar_width);
+    int list_start_y = 2 + box_h;
+    int drawn_count = 0;
+    for (size_t i = 0; i < stations.size() && drawn_count < height - list_start_y - 1; ++i) {
+        if ((int)i == active_idx) continue;
         
-        mvwprintw(stdscr, 3, 3, "🔊 [");
-        for(int i = 0; i < bar_width; ++i) {
-            if (i < filled_width) {
-                attron(COLOR_PAIR(2));
-                mvwaddch(stdscr, 3, 6 + i, ACS_BLOCK);
-                attroff(COLOR_PAIR(2));
-            } else {
-                mvwaddch(stdscr, 3, 6 + i, ' ');
-            }
-        }
-        mvwprintw(stdscr, 3, 6 + bar_width, "]");
-        mvwprintw(stdscr, 3, 6 + bar_width + 2, "%.0f%%", active_station.getCurrentVolume());
-    }
-    
-    // --- Draw the rest of the station list ---
-    int list_start_y = 2 + box_h + 1;
-    for (int i = 0; i < height - list_start_y - 1 && i < (int)stations.size(); ++i) {
         const auto& station = stations[i];
-        bool is_active = (i == active_station_idx);
-        
-        if (is_active) continue; // Don't draw the active station again
-        
-        std::string line = "   " + station.getName();
-        mvwprintw(stdscr, list_start_y + i, 3, "%s", truncate_string(line, width - 6).c_str());
+        std::string line = "  " + station.getName();
+        if (station.isFavorite()) {
+            line = "⭐" + line;
+        } else {
+            line = " " + line;
+        }
+        mvwprintw(stdscr, list_start_y + drawn_count, 2, "%s", truncate_string(line, width - 5).c_str());
+        drawn_count++;
     }
 }
-
-// --- FULL MODE FUNCTIONS (UNCHANGED) ---
 
 void UIManager::draw_full_mode(int width, int height, const std::vector<RadioStream>& stations, int active_station_idx, const nlohmann::json& history) {
     if (stations.empty()) return;
 
-    int left_panel_w = std::max(30, width / 3);
+    int left_panel_w = std::max(35, width / 3);
     int right_panel_w = width - left_panel_w;
-    int top_right_h = 7;
+    int top_right_h = 6;
     int bottom_right_h = height - top_right_h - 2;
 
     draw_stations_panel(1, 0, left_panel_w, height - 2, stations, active_station_idx);
-    
     const RadioStream& current_station = stations[active_station_idx];
     draw_now_playing_panel(1, left_panel_w, right_panel_w, top_right_h, current_station);
     draw_history_panel(1 + top_right_h, left_panel_w, right_panel_w, bottom_right_h, current_station, history);
@@ -184,11 +161,10 @@ void UIManager::draw_stations_panel(int y, int x, int w, int h, const std::vecto
             attron(A_REVERSE);
         }
 
-        std::string status_icon = "  "; // Default silent
-        if (station.isMuted()) status_icon = "🔇";
-        else if (station.getCurrentVolume() > 0) status_icon = "▶️ ";
+        std::string status_icon = station.isMuted() ? "🔇" : "▶️ ";
+        std::string fav_icon = station.isFavorite() ? "⭐ " : "  ";
         
-        std::string line = status_icon + " " + station.getName();
+        std::string line = status_icon + fav_icon + station.getName();
         mvwprintw(stdscr, y + 1 + i, x + 2, "%-*s", inner_w + 1, truncate_string(line, inner_w).c_str());
 
         if (is_active) {
@@ -210,16 +186,16 @@ void UIManager::draw_now_playing_panel(int y, int x, int w, int h, const RadioSt
 
     int bar_width = inner_w - 12; 
     if (bar_width > 0) {
-        double vol_percent = station.getCurrentVolume() / 100.0;
+        double vol_percent = station.isMuted() ? 0.0 : station.getCurrentVolume() / 100.0;
         int filled_width = static_cast<int>(vol_percent * bar_width);
         
-        mvwprintw(stdscr, y + 5, x + 3, "🔊 [");
+        mvwprintw(stdscr, y + 1, x + 3, "🔊 [");
         attron(COLOR_PAIR(2));
-        for(int i = 0; i < filled_width; ++i) mvwaddch(stdscr, y + 5, x + 6 + i, ACS_BLOCK);
+        for(int i = 0; i < filled_width; ++i) mvwaddch(stdscr, y + 1, x + 6 + i, ACS_BLOCK);
         attroff(COLOR_PAIR(2));
-        for(int i = filled_width; i < bar_width; ++i) mvwaddch(stdscr, y + 5, x + 6 + i, ' ');
-        mvwprintw(stdscr, y + 5, x + 6 + bar_width, "]");
-        mvwprintw(stdscr, y + 5, x + 8 + bar_width, "%.0f%%", station.getCurrentVolume());
+        for(int i = filled_width; i < bar_width; ++i) mvwaddch(stdscr, y + 1, x + 6 + i, ACS_CKBOARD);
+        mvwprintw(stdscr, y + 1, x + 6 + bar_width, "]");
+        mvwprintw(stdscr, y + 1, x + 8 + bar_width, "%.0f%%", station.isMuted() ? 0.0 : station.getCurrentVolume());
     }
 }
 
