@@ -2,6 +2,7 @@
 #include "RadioPlayer.h"
 #include "UIManager.h"
 #include "nlohmann/json.hpp" // Include the full JSON header for implementation
+#include "Utils.h" // Include our utility header
 
 #include <algorithm>
 #include <cstring>
@@ -56,11 +57,8 @@ void RadioPlayer::run() {
 
     while (!m_quit_flag) {
         if (needs_redraw) {
-            int remaining_seconds = 0;
-            if (m_small_mode_active) {
-                remaining_seconds = get_remaining_seconds_for_current_station();
-            }
-            m_ui->draw(m_stations, m_active_station_idx, m_small_mode_active, remaining_seconds);
+            // THE FIX IS HERE: The 4th argument has been removed from the call below.
+            m_ui->draw(m_stations, m_active_station_idx, m_small_mode_active);
             needs_redraw = false;
         }
         
@@ -220,8 +218,8 @@ RadioStream* RadioPlayer::find_station_by_id(int station_id) {
 }
 
 void RadioPlayer::on_title_changed(RadioStream& station, const std::string& new_title) {
-    if (new_title == station.getCurrentTitle() || new_title == "N/A" || new_title == "Initializing...") {
-        if (new_title != station.getCurrentTitle()) {
+    if (new_title == station.getCurrentTitle() || new_title.empty() || new_title == "N/A" || new_title == "Initializing...") {
+        if (new_title != station.getCurrentTitle() && !new_title.empty()) {
              station.setCurrentTitle(new_title);
         }
         return;
@@ -229,7 +227,7 @@ void RadioPlayer::on_title_changed(RadioStream& station, const std::string& new_
     auto now = std::chrono::system_clock::now();
     std::time_t now_c = std::chrono::system_clock::to_time_t(now);
     char time_buf[100];
-    std::strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", std::localtime(&now_c));
+    std::strftime(time_buf, sizeof(time_buf), "%H:%M", std::localtime(&now_c));
     json song_entry = { std::string(time_buf), new_title };
     {
         std::lock_guard<std::mutex> lock(m_history_mutex);
@@ -242,14 +240,16 @@ void RadioPlayer::on_title_changed(RadioStream& station, const std::string& new_
 void RadioPlayer::on_stream_eof(RadioStream& station) {
     station.setCurrentTitle("Stream Error - Reconnecting...");
     const char* cmd[] = {"loadfile", station.getURL().c_str(), "replace", nullptr};
-    mpv_command_async(station.getMpvHandle(), 0, cmd);
+    check_mpv_error(mpv_command_async(station.getMpvHandle(), 0, cmd), "reconnect on eof");
 }
 
 void RadioPlayer::handle_mpv_event(mpv_event* event) {
+    // We only care about property change events with a valid station
     if (event->event_id != MPV_EVENT_PROPERTY_CHANGE) return;
     mpv_event_property* prop = (mpv_event_property*)event->data;
     RadioStream* station = find_station_by_id(event->reply_userdata);
     if (!station) return;
+    
     if (strcmp(prop->name, "media-title") == 0 && prop->format == MPV_FORMAT_STRING) {
         char* title_cstr = *(char**)prop->data;
         on_title_changed(*station, title_cstr ? title_cstr : "N/A");

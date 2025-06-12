@@ -1,6 +1,8 @@
-// UIManager.cpp
+// src/UIManager.cpp
 #include "UIManager.h"
+#include "RadioStream.h" // Now include the full header here
 #include <ncurses.h>
+#include <string> // Required for std::string
 
 UIManager::UIManager() {
     initscr();
@@ -8,7 +10,9 @@ UIManager::UIManager() {
     noecho();
     curs_set(0);
     keypad(stdscr, TRUE);
-    timeout(100);
+    timeout(100); // Non-blocking input
+    start_color(); // Enable color if needed later
+    use_default_colors();
 }
 
 UIManager::~UIManager() {
@@ -17,13 +21,23 @@ UIManager::~UIManager() {
     }
 }
 
-void UIManager::draw(const std::vector<RadioStream>& stations, int active_station_idx, bool small_mode_active, int remaining_seconds) {
+// Main draw function is now simplified for testing the box.
+void UIManager::draw(const std::vector<RadioStream>& stations, int active_station_idx, bool small_mode_active) {
     clear();
-    draw_header(small_mode_active, remaining_seconds);
-    if (!stations.empty()) {
-        draw_station_list(stations, active_station_idx, small_mode_active);
-        draw_footer(small_mode_active);
-    }
+    
+    int width, height;
+    getmaxyx(stdscr, height, width);
+
+    draw_header();
+
+    // --- TEST DRAW ---
+    // Draw a single box to test our new function.
+    // In the next step, we'll replace this with the real layout.
+    draw_box(2, 0, width, height - 4, "TEST BOX");
+    mvprintw(3, 2, "This is a test of the box drawing function.");
+    mvprintw(4, 2, "Press 'q' to quit.");
+    // --- END TEST ---
+
     refresh();
 }
 
@@ -31,38 +45,32 @@ int UIManager::getInput() {
     return getch();
 }
 
-void UIManager::draw_header(bool small_mode_active, int remaining_seconds) {
-    if (small_mode_active) {
-        mvprintw(0, 0, "Radio Switcher - SMALL MODE ACTIVE | S: Exit Small Mode | Q: Quit");
-        mvprintw(1, 0, "Auto-rotating through all stations. Time left for current: %d seconds", remaining_seconds);
-    } else {
-        mvprintw(0, 0, "Radio Switcher (Refactored) | Q: Quit | Enter: Mute/Unmute | S: Small Mode");
-    }
+void UIManager::draw_header() {
+    mvprintw(0, 0, "Stream Hopper UI - Step 2");
 }
 
-void UIManager::draw_station_list(const std::vector<RadioStream>& stations, int active_station_idx, bool small_mode_active) {
-    for (size_t i = 0; i < stations.size(); ++i) {
-        const auto& station = stations[i];
-        bool is_active = (static_cast<int>(i) == active_station_idx);
-        if (is_active) {
-            attron(A_REVERSE);
-        }
-        std::string status = station.getStatusString(is_active, small_mode_active);
-        mvprintw(2 + i, 2, "[%s] %s: %s (Vol: %.0f)",
-                 status.c_str(),
-                 station.getName().c_str(),
-                 station.getCurrentTitle().c_str(),
-                 station.getCurrentVolume());
-        if (is_active) {
-            attroff(A_REVERSE);
-        }
-    }
-}
+// New implementation for drawing a titled box
+void UIManager::draw_box(int y, int x, int w, int h, const std::string& title) {
+    // Draw corners
+    mvaddch(y, x, ACS_ULCORNER);
+    mvaddch(y, x + w - 1, ACS_URCORNER);
+    mvaddch(y + h - 1, x, ACS_LLCORNER);
+    mvaddch(y + h - 1, x + w - 1, ACS_LRCORNER);
 
-void UIManager::draw_footer(bool small_mode_active) {
-    if (!small_mode_active) {
-        mvprintw(LINES - 2, 0, "Use UP/DOWN arrows to switch stations.");
-    } else {
-        mvprintw(LINES - 2, 0, "Small Mode: Discovering radio stations automatically...");
+    // Draw horizontal lines
+    for (int i = 1; i < w - 1; ++i) {
+        mvaddch(y, x + i, ACS_HLINE);
+        mvaddch(y + h - 1, x + i, ACS_HLINE);
+    }
+
+    // Draw vertical lines
+    for (int i = 1; i < h - 1; ++i) {
+        mvaddch(y + i, x, ACS_VLINE);
+        mvaddch(y + i, x + w - 1, ACS_VLINE);
+    }
+    
+    // Draw the title on the top border
+    if (!title.empty()) {
+        mvprintw(y, x + 2, "[ %s ]", title.c_str());
     }
 }
