@@ -1,11 +1,13 @@
 //Radio Switcher - Discovery mode with Fading, Mute, Refactored For Maintainability + Small Mode
 //
 // sudo dnf install gcc-c++ mpv-devel ncurses-devel pkg-config make
+// Download 'json.hpp' from https://github.com/nlohmann/json.
 // g++ radio.cpp -o radio $(pkg-config --cflags --libs mpv ncurses) -pthread
 //
 // - with Audio Fading
 // - Mute functionality
 // - Restructured
+// - JSON Station Name Logging
 // - Small Mode: Auto-rotation through all stations
 // Thanks to gemini-2.5-pro-preview-06-05 and claude-sonnet-4-20250514
 
@@ -19,9 +21,14 @@
 #include <algorithm>
 #include <mutex>      // ADDED: For protecting the string
 #include <cstring>    // ADDED: For strcmp
+#include <fstream>    // ADDED: For file I/O
+#include <iomanip>    // ADDED: For pretty JSON output
+#include <ctime>      // ADDED: For timestamps
 
 #include <mpv/client.h>
 #include <ncurses.h>
+
+#include "json.hpp"
 
 // === Configuration ===
 #define FADE_TIME_MS 900
@@ -242,6 +249,9 @@ public:
         
         // Calculate time per station for small mode
         m_station_switch_duration = SMALL_MODE_TOTAL_TIME_SECONDS / static_cast<int>(m_stations.size());
+
+        // ADDED: Load previous song history and initialize for current stations
+        load_history_from_disk();
         
         for (size_t i = 0; i < m_stations.size(); ++i) {
             double initial_volume = (i == m_active_station_idx) ? 100.0 : 0.0;
@@ -254,6 +264,8 @@ public:
         if (m_mpv_event_thread.joinable()) {
             m_mpv_event_thread.join();
         }
+        // ADDED: Save final history on exit
+        save_history_to_disk();
     }
     
     void run() {
@@ -311,6 +323,10 @@ private:
     std::atomic<bool> m_small_mode_active;
     std::chrono::steady_clock::time_point m_small_mode_start_time;
     int m_station_switch_duration; // seconds per station
+
+    // ADDED: For JSON song history
+    nlohmann::json m_song_history;
+    std::mutex m_history_mutex;
 
     void handle_input(int ch) {
         switch (ch) {
@@ -448,8 +464,31 @@ private:
             if (it != m_stations.end()) {
                 RadioStream& station = *it;
                 if (strcmp(prop->name, "media-title") == 0 && prop->format == MPV_FORMAT_STRING) {
-                    char* title = *(char**)prop->data;
-                    station.setCurrentTitle(title ? title : "N/A");
+                    char* title_cstr = *(char**)prop->data;
+                    std::string new_title = title_cstr ? title_cstr : "N/A";
+
+                    // Only log if the title has actually changed to something meaningful.
+                    if (new_title != station.getCurrentTitle()) {
+                        if (new_title != "N/A" && new_title != "Initializing...") {
+                            // Get current time as a string
+                            auto now = std::chrono::system_clock::now();
+                            std::time_t now_c = std::chrono::system_clock::to_time_t(now);
+                            char time_buf[100];
+                            std::strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", std::localtime(&now_c));
+
+                            // Create JSON entry: ["time", "title"]
+                            nlohmann::json song_entry = {std::string(time_buf), new_title};
+                            
+                            { // Lock before modifying the shared history object
+                                std::lock_guard<std::mutex> lock(m_history_mutex);
+                                m_song_history[station.getName()].push_back(song_entry);
+                            }
+                            // Flush the updated history to disk immediately
+                            save_history_to_disk();
+                        }
+                        // Always update the station's current title for the UI
+                        station.setCurrentTitle(new_title);
+                    }
                 } else if (strcmp(prop->name, "eof-reached") == 0 && prop->format == MPV_FORMAT_FLAG) {
                     if (*(int*)prop->data) {
                         station.setCurrentTitle("Stream Error - Reconnecting...");
@@ -460,6 +499,37 @@ private:
             }
         }
     }
+    
+    // ADDED: Methods to load and save the JSON song history
+    void load_history_from_disk() {
+        std::ifstream i("radio_history.json");
+        if (i.is_open()) {
+            try {
+                i >> m_song_history;
+                if (!m_song_history.is_object()) {
+                    m_song_history = nlohmann::json::object(); // Ensure it's a JSON object
+                }
+            } catch (...) {
+                // If file is corrupted or not valid JSON, start fresh
+                m_song_history = nlohmann::json::object();
+            }
+        }
+        // Ensure all currently configured stations have an entry in the history
+        for (const auto& station : m_stations) {
+            if (!m_song_history.contains(station.getName())) {
+                m_song_history[station.getName()] = nlohmann::json::array();
+            }
+        }
+    }
+
+    void save_history_to_disk() {
+        std::lock_guard<std::mutex> lock(m_history_mutex);
+        std::ofstream o("radio_history.json");
+        if (o.is_open()) {
+            // Write the JSON object to the file with pretty printing
+            o << std::setw(4) << m_song_history << std::endl;
+        }
+    }
 };
 
 
@@ -468,7 +538,7 @@ private:
 //================================================================================
 int main() {
     std::vector<std::pair<std::string, std::string>> station_data = {
-        {"ILoveRadio", "https://ilm.stream18.radiohost.de/ilm_iloveradio_mp3-192"},
+        //{"ILoveRadio", "https://ilm.stream18.radiohost.de/ilm_iloveradio_mp3-192"},
         {"ILove2Dance", "https://ilm.stream18.radiohost.de/ilm_ilove2dance_mp3-192"},
 
         {"RM Deutschrap", "https://rautemusik.stream43.radiohost.de/rm-deutschrap-charts_mp3-192"},
@@ -481,20 +551,20 @@ int main() {
 
         {"BreakZ", "https://rautemusik.stream43.radiohost.de/breakz"},
 
-        {"1.fm DeepHouse", "http://strm112.1.fm/deephouse_mobile_mp3"},
+        //{"1.fm DeepHouse", "http://strm112.1.fm/deephouse_mobile_mp3"},
         {"1.fm Dance", "https://strm112.1.fm/dance_mobile_mp3"},
 
         {"104.6rtl Dance Hits", "https://stream.104.6rtl.com/dance-hits/mp3-128/konsole"},
-        {"Absolut.de Hot", "https://edge22.live-sm.absolutradio.de/absolut-hot"},
+        //{"Absolut.de Hot", "https://edge22.live-sm.absolutradio.de/absolut-hot"},
 
         {"Sunshine Live - EDM", "http://stream.sunshine-live.de/edm/mp3-192/stream.sunshine-live.de/"},
         {"Sunshine Live - Amsterdam Club", "https://stream.sunshine-live.de/ade18club/mp3-128"},
         {"Sunshine Live - Charts", "http://stream.sunshine-live.de/sp6/mp3-128"},
         //{"Sunshine Live - EuroDance", "https://sunsl.streamabc.net/sunsl-eurodance-mp3-192-9832422"},
-        {"Sunshine Live - Summer Beats", "http://stream.sunshine-live.de/sp2/aac-64"},
+        //{"Sunshine Live - Summer Beats", "http://stream.sunshine-live.de/sp2/aac-64"},
 
         {"Kiss FM - German Beats", "https://topradio-stream31.radiohost.de/kissfm-deutschrap-hits_mp3-128"},
-        {"Kiss FM - DJ Sets", "https://topradio.stream41.radiohost.de/kissfm-electro_mp3-192"},
+        //{"Kiss FM - DJ Sets", "https://topradio.stream41.radiohost.de/kissfm-electro_mp3-192"},
         {"Kiss FM - Remix", "https://topradio.stream05.radiohost.de/kissfm-remix_mp3-192"},
         //{"Kiss FM - Events", "https://topradio.stream10.radiohost.de/kissfm-event_mp3-192"},
 
@@ -515,6 +585,9 @@ int main() {
         RadioPlayer player(station_data);
         player.run();
     } catch (const std::exception& e) {
+        if (stdscr != NULL && !isendwin()) {
+            endwin();
+        }
         std::cerr << "Critical Error: " << e.what() << std::endl;
         return 1;
     }
