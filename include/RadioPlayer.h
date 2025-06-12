@@ -1,28 +1,26 @@
 // RadioPlayer.h
 #pragma once
 
-#include <vector>
-#include <string>
-#include <memory>
-#include <atomic>
-#include <thread>
-#include <chrono>
-#include <mutex>
-#include "json.hpp" // Reverted to nlohmann/json
+#include "nlohmann/json_fwd.hpp" // Use forward header
 #include "RadioStream.h"
+#include <atomic>
+#include <chrono>
+#include <memory> // For std::unique_ptr
+#include <mutex>
+#include <string>
+#include <thread>
+#include <vector>
 
-// Forward declaration to reduce header dependencies
 class UIManager;
 
 class RadioPlayer {
 public:
     RadioPlayer(std::vector<std::pair<std::string, std::string>> station_data);
     ~RadioPlayer();
-
     void run();
 
 private:
-    // Member Functions
+    // ... all member functions are the same ...
     bool update_state();
     void on_key_up();
     void on_key_down();
@@ -51,6 +49,7 @@ private:
     std::atomic<bool> m_small_mode_active;
     std::chrono::steady_clock::time_point m_small_mode_start_time;
     int m_station_switch_duration;
-    nlohmann::json m_song_history; // Reverted to nlohmann::json
+    // THE FIX: Use a unique_ptr to an incomplete type.
+    std::unique_ptr<nlohmann::json> m_song_history;
     std::mutex m_history_mutex;
 };
