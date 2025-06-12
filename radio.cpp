@@ -1,8 +1,8 @@
-//Radio Switcher - Discovery mode
+//Radio Switcher - Discovery mode with Mute
 //sudo dnf install gcc-c++ mpv-devel ncurses-devel pkg-config make
 //g++ radio.cpp -o radio $(pkg-config --cflags --libs mpv ncurses) -pthread
 //
-// - with Audio Fading
+// - with Audio Fading and Mute functionality
 
 #include <iostream>
 #include <vector>
@@ -43,10 +43,13 @@ struct RadioStream {
     std::atomic<bool> is_fading;
     std::atomic<double> target_volume;
     std::atomic<double> current_volume;
+    std::atomic<bool> is_muted;
+    std::atomic<double> pre_mute_volume;
 
     RadioStream(int unique_id, const std::string& n, const std::string& u)
         : mpv(nullptr), url(u), name(n), current_title("Loading..."), id(unique_id),
-          is_fading(false), target_volume(0.0), current_volume(0.0) {}
+          is_fading(false), target_volume(0.0), current_volume(0.0), 
+          is_muted(false), pre_mute_volume(100.0) {}
 
     // Delete copy constructor and copy assignment
     RadioStream(const RadioStream&) = delete;
@@ -57,7 +60,8 @@ struct RadioStream {
         : mpv(other.mpv), url(std::move(other.url)), name(std::move(other.name)),
           current_title(std::move(other.current_title)), id(other.id),
           is_fading(other.is_fading.load()), target_volume(other.target_volume.load()),
-          current_volume(other.current_volume.load()) {
+          current_volume(other.current_volume.load()), is_muted(other.is_muted.load()),
+          pre_mute_volume(other.pre_mute_volume.load()) {
         other.mpv = nullptr;
     }
 
@@ -72,6 +76,8 @@ struct RadioStream {
             is_fading.store(other.is_fading.load());
             target_volume.store(other.target_volume.load());
             current_volume.store(other.current_volume.load());
+            is_muted.store(other.is_muted.load());
+            pre_mute_volume.store(other.pre_mute_volume.load());
             other.mpv = nullptr;
         }
         return *this;
@@ -118,6 +124,27 @@ void fade_audio(RadioStream& station, double from_vol, double to_vol, int durati
     }).detach();
 }
 
+void toggle_mute_station(int station_idx) {
+    if (station_idx < 0 || station_idx >= static_cast<int>(g_stations.size())) {
+        return;
+    }
+    
+    RadioStream& station = g_stations[station_idx];
+    if (!station.mpv) return;
+    
+    if (station.is_muted.load()) {
+        // Unmute: restore to previous volume
+        station.is_muted.store(false);
+        double restore_volume = station.pre_mute_volume.load();
+        fade_audio(station, station.current_volume.load(), restore_volume, FADE_TIME / 2);
+    } else {
+        // Mute: save current volume and fade to 0
+        station.pre_mute_volume.store(station.current_volume.load());
+        station.is_muted.store(true);
+        fade_audio(station, station.current_volume.load(), 0.0, FADE_TIME / 2);
+    }
+}
+
 void switch_station(int new_station_idx) {
     if (new_station_idx < 0 || new_station_idx >= static_cast<int>(g_stations.size())) {
         return;
@@ -127,18 +154,19 @@ void switch_station(int new_station_idx) {
         return;
     }
     
-    // Fade out current station
+    // Fade out current station (unless it's muted)
     if (g_active_station_idx >= 0 && g_active_station_idx < static_cast<int>(g_stations.size())) {
         RadioStream& current_station = g_stations[g_active_station_idx];
-        if (current_station.mpv) {
-            fade_audio(current_station, current_station.current_volume, 0.0, FADE_TIME);
+        if (current_station.mpv && !current_station.is_muted.load()) {
+            fade_audio(current_station, current_station.current_volume.load(), 0.0, FADE_TIME);
         }
     }
     
-    // Fade in new station
+    // Fade in new station (unless it's muted)
     RadioStream& new_station = g_stations[new_station_idx];
-    if (new_station.mpv) {
-        fade_audio(new_station, new_station.current_volume, 100.0, FADE_TIME);
+    if (new_station.mpv && !new_station.is_muted.load()) {
+        double target_vol = new_station.is_muted.load() ? 0.0 : 100.0;
+        fade_audio(new_station, new_station.current_volume.load(), target_vol, FADE_TIME);
     }
     
     g_active_station_idx = new_station_idx;
@@ -147,16 +175,19 @@ void switch_station(int new_station_idx) {
 void redraw_ui() {
     if (g_quit_flag) return;
     clear();
-    mvprintw(0, 0, "Radio Switcher - Press Q to quit (Fade: %dms)", FADE_TIME);
+    mvprintw(0, 0, "Radio Switcher - Press Q to quit, ENTER to mute/unmute (Fade: %dms)", FADE_TIME);
     for (size_t i = 0; i < g_stations.size(); ++i) {
         std::string status;
-        if (static_cast<int>(i) == g_active_station_idx) {
+        bool is_active = (static_cast<int>(i) == g_active_station_idx);
+        
+        if (g_stations[i].is_muted.load()) {
+            status = "Muted";
+        } else if (is_active) {
             if (g_stations[i].is_fading) {
                 status = g_stations[i].target_volume > 50.0 ? "Fading In" : "Fading Out";
             } else {
                 status = "Playing";
             }
-            attron(A_REVERSE);
         } else {
             if (g_stations[i].is_fading) {
                 status = "Fading Out";
@@ -165,22 +196,31 @@ void redraw_ui() {
             }
         }
         
-        mvprintw(2 + i, 2, "[%s] %s: %s (Vol: %.0f)",
+        if (is_active) {
+            attron(A_REVERSE);
+        }
+        
+        // Add mute indicator in the display
+        std::string mute_indicator = g_stations[i].is_muted.load() ? " [MUTED]" : "";
+        mvprintw(2 + i, 2, "[%s] %s%s: %s (Vol: %.0f)",
                  status.c_str(),
                  g_stations[i].name.c_str(),
+                 mute_indicator.c_str(),
                  g_stations[i].current_title.c_str(),
                  g_stations[i].current_volume.load());
         
-        if (static_cast<int>(i) == g_active_station_idx) {
+        if (is_active) {
             attroff(A_REVERSE);
         }
     }
     if (!g_stations.empty() && g_active_station_idx >= 0 && static_cast<size_t>(g_active_station_idx) < g_stations.size()) {
-        mvprintw(LINES - 2, 0, "UP/DOWN to switch. Active: %s", g_stations[g_active_station_idx].name.c_str());
+        std::string mute_status = g_stations[g_active_station_idx].is_muted.load() ? " (MUTED)" : "";
+        mvprintw(LINES - 2, 0, "UP/DOWN to switch, ENTER to mute/unmute. Active: %s%s", 
+                 g_stations[g_active_station_idx].name.c_str(), mute_status.c_str());
     } else if (!g_stations.empty()) {
-         mvprintw(LINES - 2, 0, "UP/DOWN to switch. Initializing...");
+         mvprintw(LINES - 2, 0, "UP/DOWN to switch, ENTER to mute/unmute. Initializing...");
     } else {
-        mvprintw(LINES - 2, 0, "UP/DOWN to switch. No active station.");
+        mvprintw(LINES - 2, 0, "UP/DOWN to switch, ENTER to mute/unmute. No active station.");
     }
     refresh();
     g_needs_redraw = false;
@@ -312,8 +352,9 @@ int main(int argc, char *argv[]) {
 
         // Set initial volume based on whether this is the active station
         double initial_volume = (static_cast<int>(i) == g_active_station_idx) ? 100.0 : 0.0;
-        station.current_volume = initial_volume;
-        station.target_volume = initial_volume;
+        station.current_volume.store(initial_volume);
+        station.target_volume.store(initial_volume);
+        station.pre_mute_volume.store(100.0); // Default unmuted volume
         mpv_set_property_async(station.mpv, 0, "volume", MPV_FORMAT_DOUBLE, &initial_volume);
         station.current_title = "Connecting...";
     }
@@ -338,6 +379,9 @@ int main(int argc, char *argv[]) {
                 if (g_active_station_idx < static_cast<int>(g_stations.size()) - 1) {
                     switch_station(g_active_station_idx + 1);
                 }
+            } else if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
+                // Toggle mute for currently selected station
+                toggle_mute_station(g_active_station_idx);
             } else if (ch == 'q' || ch == 'Q') {
                 g_quit_flag = true;
                 break;
