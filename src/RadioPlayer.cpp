@@ -57,8 +57,8 @@ void RadioPlayer::run() {
 
     while (!m_quit_flag) {
         if (needs_redraw) {
-            // THE FIX IS HERE: The 4th argument has been removed from the call below.
-            m_ui->draw(m_stations, m_active_station_idx, m_small_mode_active);
+            // THE FIX IS HERE: Pass the history object to the draw function.
+            m_ui->draw(m_stations, m_active_station_idx, m_small_mode_active, *m_song_history);
             needs_redraw = false;
         }
         

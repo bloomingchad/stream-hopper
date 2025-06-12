@@ -4,6 +4,7 @@
 
 #include <vector>
 #include <string>
+#include <nlohmann/json_fwd.hpp> // Forward-declare json
 
 // Forward declaration to avoid including the full RadioStream header here.
 class RadioStream;
@@ -13,14 +14,21 @@ public:
     UIManager();
     ~UIManager();
 
-    // The main draw function, updated for future steps.
-    void draw(const std::vector<RadioStream>& stations, int active_station_idx, bool small_mode_active);
+    void draw(const std::vector<RadioStream>& stations, int active_station_idx, bool small_mode_active, const nlohmann::json& history);
     int getInput();
 
 private:
-    void draw_header();
-    
-    // New function to draw a titled box.
+    // Main layout drawers
+    void draw_header_bar(int width);
+    void draw_footer_bar(int y, int width);
+    void draw_full_mode(int width, int height, const std::vector<RadioStream>& stations, int active_station_idx, const nlohmann::json& history);
+
+    // Panel content drawers
+    void draw_stations_panel(int y, int x, int w, int h, const std::vector<RadioStream>& stations, int active_station_idx);
+    void draw_now_playing_panel(int y, int x, int w, int h, const RadioStream& station);
+    void draw_history_panel(int y, int x, int w, int h, const RadioStream& station, const nlohmann::json& history);
+
+    // Generic drawing helper
     void draw_box(int y, int x, int w, int h, const std::string& title);
 };
 
