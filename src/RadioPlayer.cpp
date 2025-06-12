@@ -22,8 +22,8 @@ RadioPlayer::RadioPlayer(std::vector<std::pair<std::string, std::string>> statio
       m_active_station_idx(0),
       m_quit_flag(false),
       m_small_mode_active(false),
-      m_active_panel(ActivePanel::STATIONS), // Initialize focus on STATIONS
-      m_history_scroll_offset(0),            // Initialize scroll offset to 0
+      m_active_panel(ActivePanel::STATIONS),
+      m_history_scroll_offset(0),
       m_song_history(std::make_unique<json>(json::object())),
       m_small_mode_start_time(std::chrono::steady_clock::now()),
       m_station_switch_duration(0)
@@ -58,8 +58,8 @@ void RadioPlayer::run() {
 
     while (!m_quit_flag) {
         if (needs_redraw) {
-            // We will update this call in a later step to pass the new state
-            m_ui->draw(m_stations, m_active_station_idx, m_small_mode_active, *m_song_history);
+            // UPDATED: Pass the new state to the UI
+            m_ui->draw(m_stations, m_active_station_idx, *m_song_history, m_active_panel, m_history_scroll_offset);
             needs_redraw = false;
         }
         
@@ -76,6 +76,7 @@ void RadioPlayer::run() {
 }
 
 bool RadioPlayer::update_state() {
+    // This function remains unchanged from the previous step
     if (m_small_mode_active && should_switch_station()) {
         int next_station = (m_active_station_idx + 1) % static_cast<int>(m_stations.size());
         switch_station(next_station);
@@ -93,17 +94,8 @@ bool RadioPlayer::update_state() {
     return false;
 }
 
-void RadioPlayer::on_key_up() {
-    if (!m_small_mode_active && m_active_station_idx > 0) {
-        switch_station(m_active_station_idx - 1);
-    }
-}
-
-void RadioPlayer::on_key_down() {
-    if (!m_small_mode_active && m_active_station_idx < static_cast<int>(m_stations.size()) - 1) {
-        switch_station(m_active_station_idx + 1);
-    }
-}
+// REMOVED: on_key_up and on_key_down are no longer needed,
+// their logic is moved into handle_input.
 
 void RadioPlayer::on_key_enter() {
     if (!m_stations.empty()) {
@@ -111,20 +103,61 @@ void RadioPlayer::on_key_enter() {
     }
 }
 
+// REWRITTEN: The main input handling logic is now context-aware.
 void RadioPlayer::handle_input(int ch) {
     switch (ch) {
-        case KEY_UP:    on_key_up(); break;
-        case KEY_DOWN:  on_key_down(); break;
-        case '\n': case '\r': case KEY_ENTER: on_key_enter(); break;
-        case 's': case 'S': toggle_small_mode(); break;
+        case KEY_UP:
+            if (m_active_panel == ActivePanel::STATIONS) {
+                if (m_active_station_idx > 0) {
+                    switch_station(m_active_station_idx - 1);
+                }
+            } else if (m_active_panel == ActivePanel::HISTORY) {
+                if (m_history_scroll_offset > 0) {
+                    m_history_scroll_offset--;
+                }
+            }
+            break;
+
+        case KEY_DOWN:
+            if (m_active_panel == ActivePanel::STATIONS) {
+                if (m_active_station_idx < static_cast<int>(m_stations.size()) - 1) {
+                    switch_station(m_active_station_idx + 1);
+                }
+            } else if (m_active_panel == ActivePanel::HISTORY) {
+                // We'll add a check later to prevent scrolling past the end
+                m_history_scroll_offset++;
+            }
+            break;
+
+        case '\t': // Tab key
+            if (m_active_panel == ActivePanel::STATIONS) {
+                m_active_panel = ActivePanel::HISTORY;
+            } else {
+                m_active_panel = ActivePanel::STATIONS;
+            }
+            break;
+
+        case '\n': case '\r': case KEY_ENTER:
+            on_key_enter();
+            break;
+
+        case 's': case 'S':
+            toggle_small_mode();
+            break;
+
         case 'f': case 'F':
             if (!m_stations.empty()) {
                 m_stations[m_active_station_idx].toggleFavorite();
             }
             break;
-        case 'q': case 'Q': m_quit_flag = true; break;
+
+        case 'q': case 'Q':
+            m_quit_flag = true;
+            break;
     }
 }
+
+// The rest of the file remains the same. I will paste it for completeness.
 
 void RadioPlayer::toggle_small_mode() {
     m_small_mode_active = !m_small_mode_active;
@@ -167,7 +200,6 @@ void RadioPlayer::switch_station(int new_idx) {
     }
     m_active_station_idx = new_idx;
     
-    // NEW: Reset scroll offset when changing station
     m_history_scroll_offset = 0;
 }
 
