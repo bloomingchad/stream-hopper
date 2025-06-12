@@ -1,425 +1,405 @@
-//Radio Switcher - Discovery mode with Mute
-//sudo dnf install gcc-c++ mpv-devel ncurses-devel pkg-config make
-//g++ radio.cpp -o radio $(pkg-config --cflags --libs mpv ncurses) -pthread
+//Radio Switcher - Discovery mode with Fading, Mute, Refactored For Maintainability
 //
-// - with Audio Fading and Mute functionality
+// sudo dnf install gcc-c++ mpv-devel ncurses-devel pkg-config make
+// g++ radio.cpp -o radio $(pkg-config --cflags --libs mpv ncurses) -pthread
+//
+// - with Audio Fading
+// - Mute functionality
+// - Restructured
+// Thanks to gemini-2.5-pro-preview-06-05 and claude-sonnet-4-20250514
 
 #include <iostream>
 #include <vector>
 #include <string>
 #include <thread>
 #include <chrono>
-#include <cstdlib> // For getenv
-#include <cstring> // For strcmp
+#include <memory>
 #include <atomic>
+#include <algorithm>
+#include <mutex>      // ADDED: For protecting the string
+#include <cstring>    // ADDED: For strcmp
 
 #include <mpv/client.h>
 #include <ncurses.h>
 
-#define FADE_TIME 900 // Fade duration in milliseconds
+// === Configuration ===
+#define FADE_TIME_MS 900
 
-// Helper to check for MPV errors
+// === Helper Functions ===
 void check_mpv_error(int status, const std::string& context) {
     if (status < 0) {
-        bool ncurses_active = (stdscr != NULL && !isendwin());
-        if (ncurses_active) {
-            mvprintw(LINES - 1, 0, "MPV Error (%s): %s. Exiting.", context.c_str(), mpv_error_string(status));
-            refresh();
-            std::this_thread::sleep_for(std::chrono::seconds(5));
+        if (stdscr != NULL && !isendwin()) {
             endwin();
-        } else {
-            std::cerr << "MPV Error (" << context << "): " << mpv_error_string(status) << std::endl;
         }
+        std::cerr << "MPV Error (" << context << "): " << mpv_error_string(status) << std::endl;
         exit(1);
     }
 }
 
-struct RadioStream {
-    mpv_handle *mpv;
-    std::string url;
-    std::string name;
-    std::string current_title;
-    int id;
-    std::atomic<bool> is_fading;
-    std::atomic<double> target_volume;
-    std::atomic<double> current_volume;
-    std::atomic<bool> is_muted;
-    std::atomic<double> pre_mute_volume;
+//================================================================================
+// 1. RadioStream Class
+//================================================================================
+class RadioStream {
+public:
+    RadioStream(int id, std::string name, std::string url)
+        : m_id(id), m_name(std::move(name)), m_url(std::move(url)),
+          m_mpv(nullptr), m_current_title("Initializing..."),
+          m_is_fading(false), m_target_volume(0.0), m_current_volume(0.0),
+          m_is_muted(false), m_pre_mute_volume(100.0) {}
 
-    RadioStream(int unique_id, const std::string& n, const std::string& u)
-        : mpv(nullptr), url(u), name(n), current_title("Loading..."), id(unique_id),
-          is_fading(false), target_volume(0.0), current_volume(0.0), 
-          is_muted(false), pre_mute_volume(100.0) {}
+    ~RadioStream() {
+        destroy();
+    }
 
-    // Delete copy constructor and copy assignment
+    // Disable copying.
     RadioStream(const RadioStream&) = delete;
     RadioStream& operator=(const RadioStream&) = delete;
 
-    // Custom move constructor
+    // ADDED: Custom move constructor because std::atomic members are not movable.
     RadioStream(RadioStream&& other) noexcept
-        : mpv(other.mpv), url(std::move(other.url)), name(std::move(other.name)),
-          current_title(std::move(other.current_title)), id(other.id),
-          is_fading(other.is_fading.load()), target_volume(other.target_volume.load()),
-          current_volume(other.current_volume.load()), is_muted(other.is_muted.load()),
-          pre_mute_volume(other.pre_mute_volume.load()) {
-        other.mpv = nullptr;
+        : m_id(other.m_id),
+          m_name(std::move(other.m_name)),
+          m_url(std::move(other.m_url)),
+          m_mpv(other.m_mpv)
+    {
+        // For atomic members, we load the value from the source and store it in the new object.
+        m_is_fading.store(other.m_is_fading.load());
+        m_target_volume.store(other.m_target_volume.load());
+        m_current_volume.store(other.m_current_volume.load());
+        m_is_muted.store(other.m_is_muted.load());
+        m_pre_mute_volume.store(other.m_pre_mute_volume.load());
+        
+        // For the string, we must lock its mutex to safely get the value.
+        m_current_title = other.getCurrentTitle();
+
+        // IMPORTANT: Nullify the source's mpv handle to prevent double-free.
+        other.m_mpv = nullptr;
     }
 
-    // Custom move assignment
+    // ADDED: Custom move assignment operator.
     RadioStream& operator=(RadioStream&& other) noexcept {
         if (this != &other) {
-            mpv = other.mpv;
-            url = std::move(other.url);
-            name = std::move(other.name);
-            current_title = std::move(other.current_title);
-            id = other.id;
-            is_fading.store(other.is_fading.load());
-            target_volume.store(other.target_volume.load());
-            current_volume.store(other.current_volume.load());
-            is_muted.store(other.is_muted.load());
-            pre_mute_volume.store(other.pre_mute_volume.load());
-            other.mpv = nullptr;
+            destroy(); // Clean up our own resources first.
+
+            m_id = other.m_id;
+            m_name = std::move(other.m_name);
+            m_url = std::move(other.m_url);
+            m_mpv = other.m_mpv;
+            
+            m_is_fading.store(other.m_is_fading.load());
+            m_target_volume.store(other.m_target_volume.load());
+            m_current_volume.store(other.m_current_volume.load());
+            m_is_muted.store(other.m_is_muted.load());
+            m_pre_mute_volume.store(other.m_pre_mute_volume.load());
+            m_current_title = other.getCurrentTitle();
+
+            other.m_mpv = nullptr;
         }
         return *this;
     }
+
+    void initialize(double initial_volume) {
+        m_mpv = mpv_create();
+        if (!m_mpv) {
+            throw std::runtime_error("Failed to create MPV instance for " + m_name);
+        }
+        check_mpv_error(mpv_initialize(m_mpv), "mpv_initialize for " + m_name);
+        mpv_set_property_string(m_mpv, "vo", "null");
+        mpv_set_property_string(m_mpv, "audio-display", "no");
+        mpv_set_property_string(m_mpv, "input-default-bindings", "no");
+        mpv_set_property_string(m_mpv, "terminal", "no");
+        mpv_set_property_string(m_mpv, "msg-level", "all=warn");
+        check_mpv_error(mpv_observe_property(m_mpv, m_id, "media-title", MPV_FORMAT_STRING), "observe media-title");
+        check_mpv_error(mpv_observe_property(m_mpv, m_id, "eof-reached", MPV_FORMAT_FLAG), "observe eof-reached");
+        const char* cmd[] = {"loadfile", m_url.c_str(), "replace", nullptr};
+        check_mpv_error(mpv_command_async(m_mpv, 0, cmd), "loadfile for " + m_name);
+        m_current_volume = initial_volume;
+        m_target_volume = initial_volume;
+        mpv_set_property_async(m_mpv, 0, "volume", MPV_FORMAT_DOUBLE, &initial_volume);
+    }
+
+    void destroy() {
+        if (m_mpv) {
+            mpv_terminate_destroy(m_mpv);
+            m_mpv = nullptr;
+        }
+    }
+
+    std::string getStatusString(bool is_active) const {
+        if (m_is_muted) return "Muted";
+        if (m_is_fading) {
+            return m_target_volume > m_current_volume ? "Fading In" : "Fading Out";
+        }
+        return is_active ? "Playing" : "Silent";
+    }
+
+    int getID() const { return m_id; }
+    const std::string& getName() const { return m_name; }
+    const std::string& getURL() const { return m_url; }
+    mpv_handle* getMpvHandle() const { return m_mpv; }
+    
+    // CHANGED: Use a mutex to protect the string for thread-safe access.
+    std::string getCurrentTitle() const {
+        std::lock_guard<std::mutex> lock(m_title_mutex);
+        return m_current_title;
+    }
+    void setCurrentTitle(const std::string& title) {
+        std::lock_guard<std::mutex> lock(m_title_mutex);
+        m_current_title = title;
+    }
+
+    bool isMuted() const { return m_is_muted; }
+    void setMuted(bool muted) { m_is_muted = muted; }
+    double getCurrentVolume() const { return m_current_volume; }
+    void setCurrentVolume(double vol) { m_current_volume = vol; }
+    double getPreMuteVolume() const { return m_pre_mute_volume; }
+    void setPreMuteVolume(double vol) { m_pre_mute_volume = vol; }
+    bool isFading() const { return m_is_fading; }
+    void setFading(bool fading) { m_is_fading = fading; }
+    double getTargetVolume() const { return m_target_volume; }
+    void setTargetVolume(double vol) { m_target_volume = vol; }
+
+private:
+    int m_id;
+    std::string m_name;
+    std::string m_url;
+    mpv_handle* m_mpv;
+
+    // CHANGED: m_current_title is now a regular string.
+    std::string m_current_title;
+    // ADDED: A mutex to protect m_current_title. 'mutable' allows it to be locked in const methods.
+    mutable std::mutex m_title_mutex;
+
+    // These can remain atomic as they are trivially copyable.
+    std::atomic<bool> m_is_fading;
+    std::atomic<double> m_target_volume;
+    std::atomic<double> m_current_volume;
+    std::atomic<bool> m_is_muted;
+    std::atomic<double> m_pre_mute_volume;
 };
 
-std::vector<RadioStream> g_stations;
-int g_active_station_idx = 0;
-bool g_needs_redraw = true;
-volatile bool g_quit_flag = false;
 
-void fade_audio(RadioStream& station, double from_vol, double to_vol, int duration_ms) {
-    if (!station.mpv || g_quit_flag) return;
-    
-    station.is_fading = true;
-    station.target_volume = to_vol;
-    
-    const int steps = 50; // Number of fade steps
-    const int step_delay = duration_ms / steps;
-    const double vol_step = (to_vol - from_vol) / steps;
-    
-    std::thread([&station, from_vol, vol_step, step_delay, steps, to_vol]() {
-        double current_vol = from_vol;
-        
-        for (int i = 0; i < steps && !g_quit_flag && station.mpv; ++i) {
-            current_vol += vol_step;
-            station.current_volume = current_vol;
-            
-            // Clamp volume between 0 and 100
-            double clamped_vol = std::max(0.0, std::min(100.0, current_vol));
-            mpv_set_property_async(station.mpv, 0, "volume", MPV_FORMAT_DOUBLE, &clamped_vol);
-            
-            std::this_thread::sleep_for(std::chrono::milliseconds(step_delay));
+//================================================================================
+// 2. UIManager Class
+//================================================================================
+class UIManager {
+public:
+    UIManager() {
+        initscr(); cbreak(); noecho(); curs_set(0); keypad(stdscr, TRUE); timeout(100);
+    }
+    ~UIManager() {
+        if (stdscr != NULL && !isendwin()) { endwin(); }
+    }
+    void draw(const std::vector<RadioStream>& stations, int active_station_idx) {
+        clear();
+        mvprintw(0, 0, "Radio Switcher (Refactored) | Q: Quit | Enter: Mute/Unmute");
+        for (size_t i = 0; i < stations.size(); ++i) {
+            const auto& station = stations[i];
+            bool is_active = (static_cast<int>(i) == active_station_idx);
+            if (is_active) attron(A_REVERSE);
+            std::string status = station.getStatusString(is_active);
+            mvprintw(2 + i, 2, "[%s] %s: %s (Vol: %.0f)",
+                     status.c_str(), station.getName().c_str(),
+                     station.getCurrentTitle().c_str(), station.getCurrentVolume());
+            if (is_active) attroff(A_REVERSE);
         }
-        
-        // Ensure final volume is set
-        if (!g_quit_flag && station.mpv) {
-            station.current_volume = to_vol;
-            double final_vol = std::max(0.0, std::min(100.0, to_vol));
-            mpv_set_property_async(station.mpv, 0, "volume", MPV_FORMAT_DOUBLE, &final_vol);
+        if (!stations.empty()) {
+            mvprintw(LINES - 2, 0, "Use UP/DOWN arrows to switch stations.");
         }
-        
-        station.is_fading = false;
-    }).detach();
-}
+        refresh();
+    }
+    int getInput() { return getch(); }
+};
 
-void toggle_mute_station(int station_idx) {
-    if (station_idx < 0 || station_idx >= static_cast<int>(g_stations.size())) {
-        return;
-    }
-    
-    RadioStream& station = g_stations[station_idx];
-    if (!station.mpv) return;
-    
-    if (station.is_muted.load()) {
-        // Unmute: restore to previous volume
-        station.is_muted.store(false);
-        double restore_volume = station.pre_mute_volume.load();
-        fade_audio(station, station.current_volume.load(), restore_volume, FADE_TIME / 2);
-    } else {
-        // Mute: save current volume and fade to 0
-        station.pre_mute_volume.store(station.current_volume.load());
-        station.is_muted.store(true);
-        fade_audio(station, station.current_volume.load(), 0.0, FADE_TIME / 2);
-    }
-}
 
-void switch_station(int new_station_idx) {
-    if (new_station_idx < 0 || new_station_idx >= static_cast<int>(g_stations.size())) {
-        return;
-    }
-    
-    if (g_active_station_idx == new_station_idx) {
-        return;
-    }
-    
-    // Fade out current station (unless it's muted)
-    if (g_active_station_idx >= 0 && g_active_station_idx < static_cast<int>(g_stations.size())) {
-        RadioStream& current_station = g_stations[g_active_station_idx];
-        if (current_station.mpv && !current_station.is_muted.load()) {
-            fade_audio(current_station, current_station.current_volume.load(), 0.0, FADE_TIME);
+//================================================================================
+// 3. RadioPlayer Class
+//================================================================================
+class RadioPlayer {
+public:
+    RadioPlayer(std::vector<std::pair<std::string, std::string>> station_data)
+        : m_ui(std::make_unique<UIManager>()), m_active_station_idx(0), m_quit_flag(false) {
+        if (station_data.empty()) {
+            throw std::runtime_error("No radio stations provided.");
+        }
+        for (size_t i = 0; i < station_data.size(); ++i) {
+            m_stations.emplace_back(i, station_data[i].first, station_data[i].second);
+        }
+        for (size_t i = 0; i < m_stations.size(); ++i) {
+            double initial_volume = (i == m_active_station_idx) ? 100.0 : 0.0;
+            m_stations[i].initialize(initial_volume);
         }
     }
-    
-    // Fade in new station (unless it's muted)
-    RadioStream& new_station = g_stations[new_station_idx];
-    if (new_station.mpv && !new_station.is_muted.load()) {
-        double target_vol = new_station.is_muted.load() ? 0.0 : 100.0;
-        fade_audio(new_station, new_station.current_volume.load(), target_vol, FADE_TIME);
+    ~RadioPlayer() {
+        m_quit_flag = true;
+        if (m_mpv_event_thread.joinable()) {
+            m_mpv_event_thread.join();
+        }
     }
-    
-    g_active_station_idx = new_station_idx;
-}
-
-void redraw_ui() {
-    if (g_quit_flag) return;
-    clear();
-    mvprintw(0, 0, "Radio Switcher - Press Q to quit, ENTER to mute/unmute (Fade: %dms)", FADE_TIME);
-    for (size_t i = 0; i < g_stations.size(); ++i) {
-        std::string status;
-        bool is_active = (static_cast<int>(i) == g_active_station_idx);
-        
-        if (g_stations[i].is_muted.load()) {
-            status = "Muted";
-        } else if (is_active) {
-            if (g_stations[i].is_fading) {
-                status = g_stations[i].target_volume > 50.0 ? "Fading In" : "Fading Out";
-            } else {
-                status = "Playing";
+    void run() {
+        m_mpv_event_thread = std::thread(&RadioPlayer::mpv_event_loop, this);
+        bool needs_redraw = true;
+        while (!m_quit_flag) {
+            if (needs_redraw) {
+                m_ui->draw(m_stations, m_active_station_idx);
+                needs_redraw = false;
             }
+            int ch = m_ui->getInput();
+            if (ch != ERR) {
+                handle_input(ch);
+                needs_redraw = true;
+            }
+            for (const auto& station : m_stations) {
+                if (station.isFading()) {
+                    needs_redraw = true;
+                    break;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+    }
+
+private:
+    std::vector<RadioStream> m_stations;
+    std::unique_ptr<UIManager> m_ui;
+    int m_active_station_idx;
+    std::atomic<bool> m_quit_flag;
+    std::thread m_mpv_event_thread;
+
+    void handle_input(int ch) {
+        switch (ch) {
+            case KEY_UP:
+                if (m_active_station_idx > 0) { switch_station(m_active_station_idx - 1); }
+                break;
+            case KEY_DOWN:
+                if (m_active_station_idx < static_cast<int>(m_stations.size()) - 1) { switch_station(m_active_station_idx + 1); }
+                break;
+            case '\n': case '\r': case KEY_ENTER:
+                toggle_mute_station(m_active_station_idx);
+                break;
+            case 'q': case 'Q':
+                m_quit_flag = true;
+                break;
+        }
+    }
+
+    void switch_station(int new_idx) {
+        if (new_idx == m_active_station_idx) return;
+        RadioStream& current_station = m_stations[m_active_station_idx];
+        if (!current_station.isMuted()) {
+            fade_audio(current_station, current_station.getCurrentVolume(), 0.0, FADE_TIME_MS);
+        }
+        RadioStream& new_station = m_stations[new_idx];
+        if (!new_station.isMuted()) {
+            fade_audio(new_station, new_station.getCurrentVolume(), 100.0, FADE_TIME_MS);
+        }
+        m_active_station_idx = new_idx;
+    }
+
+    void toggle_mute_station(int station_idx) {
+        RadioStream& station = m_stations[station_idx];
+        if (station.isMuted()) {
+            station.setMuted(false);
+            fade_audio(station, station.getCurrentVolume(), station.getPreMuteVolume(), FADE_TIME_MS / 2);
         } else {
-            if (g_stations[i].is_fading) {
-                status = "Fading Out";
-            } else {
-                status = "Silent";
+            station.setPreMuteVolume(station.getCurrentVolume());
+            station.setMuted(true);
+            fade_audio(station, station.getCurrentVolume(), 0.0, FADE_TIME_MS / 2);
+        }
+    }
+
+    void fade_audio(RadioStream& station, double from_vol, double to_vol, int duration_ms) {
+        station.setFading(true);
+        station.setTargetVolume(to_vol);
+        std::thread([this, &station, from_vol, to_vol, duration_ms]() {
+            const int steps = 50;
+            const int step_delay = duration_ms / steps;
+            const double vol_step = (to_vol - from_vol) / steps;
+            double current_vol = from_vol;
+            for (int i = 0; i < steps && !m_quit_flag; ++i) {
+                current_vol += vol_step;
+                station.setCurrentVolume(current_vol);
+                double clamped_vol = std::max(0.0, std::min(100.0, current_vol));
+                mpv_set_property_async(station.getMpvHandle(), 0, "volume", MPV_FORMAT_DOUBLE, &clamped_vol);
+                std::this_thread::sleep_for(std::chrono::milliseconds(step_delay));
+            }
+            if (!m_quit_flag) {
+                station.setCurrentVolume(to_vol);
+                double final_vol = std::max(0.0, std::min(100.0, to_vol));
+                mpv_set_property_async(station.getMpvHandle(), 0, "volume", MPV_FORMAT_DOUBLE, &final_vol);
+            }
+            station.setFading(false);
+        }).detach();
+    }
+
+    void mpv_event_loop() {
+        while (!m_quit_flag) {
+            bool event_found = false;
+            for (auto& station : m_stations) {
+                if (!station.getMpvHandle()) continue;
+                mpv_event* event = mpv_wait_event(station.getMpvHandle(), 0.001);
+                if (event->event_id != MPV_EVENT_NONE) {
+                    handle_mpv_event(event);
+                    event_found = true;
+                }
+            }
+            if (!event_found) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
             }
         }
-        
-        if (is_active) {
-            attron(A_REVERSE);
-        }
-        
-        // Add mute indicator in the display
-        std::string mute_indicator = g_stations[i].is_muted.load() ? " [MUTED]" : "";
-        mvprintw(2 + i, 2, "[%s] %s%s: %s (Vol: %.0f)",
-                 status.c_str(),
-                 g_stations[i].name.c_str(),
-                 mute_indicator.c_str(),
-                 g_stations[i].current_title.c_str(),
-                 g_stations[i].current_volume.load());
-        
-        if (is_active) {
-            attroff(A_REVERSE);
-        }
     }
-    if (!g_stations.empty() && g_active_station_idx >= 0 && static_cast<size_t>(g_active_station_idx) < g_stations.size()) {
-        std::string mute_status = g_stations[g_active_station_idx].is_muted.load() ? " (MUTED)" : "";
-        mvprintw(LINES - 2, 0, "UP/DOWN to switch, ENTER to mute/unmute. Active: %s%s", 
-                 g_stations[g_active_station_idx].name.c_str(), mute_status.c_str());
-    } else if (!g_stations.empty()) {
-         mvprintw(LINES - 2, 0, "UP/DOWN to switch, ENTER to mute/unmute. Initializing...");
-    } else {
-        mvprintw(LINES - 2, 0, "UP/DOWN to switch, ENTER to mute/unmute. No active station.");
-    }
-    refresh();
-    g_needs_redraw = false;
-}
 
-void mpv_event_loop() {
-    while (!g_quit_flag) {
-        bool event_processed_this_cycle = false;
-        for (size_t i = 0; i < g_stations.size(); ++i) {
-            if (g_quit_flag) break;
-            if (!g_stations[i].mpv) continue;
-
-            mpv_event *event = mpv_wait_event(g_stations[i].mpv, 0.001); // 1ms timeout
-
-            if (event && event->event_id != MPV_EVENT_NONE) {
-                event_processed_this_cycle = true;
-                if (event->event_id == MPV_EVENT_PROPERTY_CHANGE) {
-                    mpv_event_property *prop = (mpv_event_property *)event->data;
-                    int station_id_from_event = event->reply_userdata;
-
-                    for(size_t k=0; k < g_stations.size(); ++k) {
-                        if (g_stations[k].id == station_id_from_event) {
-                            if (strcmp(prop->name, "media-title") == 0) {
-                                if (prop->format == MPV_FORMAT_STRING) {
-                                    char *title_ptr = nullptr;
-                                    if (prop->data) { // Check if prop->data is not null
-                                        title_ptr = *(char **)prop->data;
-                                    }
-                                    g_stations[k].current_title = title_ptr ? title_ptr : "N/A";
-                                    g_needs_redraw = true;
-                                }
-                            } else if (strcmp(prop->name, "eof-reached") == 0) {
-                                // **** THIS IS THE FIX for the SEGFAULT ****
-                                if (prop->format == MPV_FORMAT_FLAG && prop->data != nullptr) {
-                                    if (*(int*)prop->data) { // Dereference only if data is valid
-                                        g_stations[k].current_title = "Stream Ended/Error - Retrying...";
-                                        g_needs_redraw = true;
-                                        const char *cmd_reload[] = {"loadfile", g_stations[k].url.c_str(), "replace", nullptr};
-                                        mpv_command_async(g_stations[k].mpv, 0, cmd_reload);
-                                    }
-                                }
-                                // Optional: log if format is unexpected or data is null
-                                /* else {
-                                    fprintf(stderr, "Warning: eof-reached event with unexpected format/null data for %s. Format: %d, Data: %p\n", 
-                                            g_stations[k].name.c_str(), prop->format, prop->data);
-                                } */
-                            }
-                            break; // Found the station, break inner loop
-                        }
+    void handle_mpv_event(mpv_event* event) {
+        if (event->event_id == MPV_EVENT_PROPERTY_CHANGE) {
+            mpv_event_property* prop = (mpv_event_property*)event->data;
+            int station_id = event->reply_userdata;
+            auto it = std::find_if(m_stations.begin(), m_stations.end(), 
+                                   [station_id](const RadioStream& s) { return s.getID() == station_id; });
+            if (it != m_stations.end()) {
+                RadioStream& station = *it;
+                if (strcmp(prop->name, "media-title") == 0 && prop->format == MPV_FORMAT_STRING) {
+                    char* title = *(char**)prop->data;
+                    station.setCurrentTitle(title ? title : "N/A");
+                } else if (strcmp(prop->name, "eof-reached") == 0 && prop->format == MPV_FORMAT_FLAG) {
+                    if (*(int*)prop->data) {
+                        station.setCurrentTitle("Stream Error - Reconnecting...");
+                        const char* cmd[] = {"loadfile", station.getURL().c_str(), "replace", nullptr};
+                        mpv_command_async(station.getMpvHandle(), 0, cmd);
                     }
-                } else if (event->event_id == MPV_EVENT_SHUTDOWN) {
-                    // This mpv instance is shutting down.
-                    // Main loop's g_quit_flag will handle full program termination.
                 }
             }
         }
-
-        if (!event_processed_this_cycle && !g_quit_flag) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
-        
-        // Update UI if any station is fading (to show volume changes)
-        bool any_fading = false;
-        for (const auto& station : g_stations) {
-            if (station.is_fading) {
-                any_fading = true;
-                break;
-            }
-        }
-        if (any_fading) {
-            g_needs_redraw = true;
-        }
     }
-}
+};
 
 
-int main(int argc, char *argv[]) {
-    g_stations.emplace_back(0, "ILoveRadio", "https://ilm.stream18.radiohost.de/ilm_iloveradio_mp3-192");
-    g_stations.emplace_back(1, "ILove2Dance", "https://ilm.stream18.radiohost.de/ilm_ilove2dance_mp3-192");
-    g_stations.emplace_back(2, "RM Deutschrap", "https://rautemusik.stream43.radiohost.de/rm-deutschrap-charts_mp3-192");
-    g_stations.emplace_back(3, "RM Charthits", "https://rautemusik.stream43.radiohost.de/charthits");
-    g_stations.emplace_back(4, "bigFM Deutschrap", "https://stream.bigfm.de/oldschooldeutschrap/aac-128");
-    g_stations.emplace_back(5, "BreakZ", "https://rautemusik.stream43.radiohost.de/breakz");
-    g_stations.emplace_back(6, "1.fm DeepHouse", "http://strm112.1.fm/deephouse_mobile_mp3");
-    g_stations.emplace_back(7, "1.fm Dance", "https://strm112.1.fm/dance_mobile_mp3");
-    g_stations.emplace_back(8, "104.6rtl Dance Hits", "https://stream.104.6rtl.com/dance-hits/mp3-128/konsole");
-    g_stations.emplace_back(9, "Absolut.de Hot", "https://edge22.live-sm.absolutradio.de/absolut-hot");
-    g_stations.emplace_back(10, "Sunshine Live - EDM", "http://stream.sunshine-live.de/edm/mp3-192/stream.sunshine-live.de/"); // edm, new, german
-    g_stations.emplace_back(11, "PulseEDM Dance Radio", "http://pulseedm.cdnstream1.com:8124/1373_128.m3u"); // edm, new (mpv handles .m3u)
+//================================================================================
+// 4. Main Function
+//================================================================================
+int main() {
+    std::vector<std::pair<std::string, std::string>> station_data = {
+        {"ILoveRadio", "https://ilm.stream18.radiohost.de/ilm_iloveradio_mp3-192"},
+        {"ILove2Dance", "https://ilm.stream18.radiohost.de/ilm_ilove2dance_mp3-192"},
+        {"RM Deutschrap", "https://rautemusik.stream43.radiohost.de/rm-deutschrap-charts_mp3-192"},
+        {"RM Charthits", "https://rautemusik.stream43.radiohost.de/charthits"},
+        {"bigFM Deutschrap", "https://stream.bigfm.de/oldschooldeutschrap/aac-128"},
+        {"BreakZ", "https://rautemusik.stream43.radiohost.de/breakz"},
+        {"1.fm DeepHouse", "http://strm112.1.fm/deephouse_mobile_mp3"},
+        {"1.fm Dance", "https://strm112.1.fm/dance_mobile_mp3"},
+        {"104.6rtl Dance Hits", "https://stream.104.6rtl.com/dance-hits/mp3-128/konsole"},
+        {"Absolut.de Hot", "https://edge22.live-sm.absolutradio.de/absolut-hot"},
+        {"Sunshine Live - EDM", "http://stream.sunshine-live.de/edm/mp3-192/stream.sunshine-live.de/"},
+        {"PulseEDM Dance Radio", "http://pulseedm.cdnstream1.com:8124/1373_128.m3u"}
+    };
 
-    if (g_stations.empty()) {
-        std::cerr << "No radio stations defined. Exiting." << std::endl;
+    try {
+        RadioPlayer player(station_data);
+        player.run();
+    } catch (const std::exception& e) {
+        std::cerr << "Critical Error: " << e.what() << std::endl;
         return 1;
     }
-    g_active_station_idx = 0;
 
-    initscr();
-    cbreak();
-    noecho();
-    curs_set(0);
-    keypad(stdscr, TRUE);
-    timeout(100);
-
-    for (size_t i = 0; i < g_stations.size(); ++i) {
-        RadioStream& station = g_stations[i];
-        station.mpv = mpv_create();
-        if (!station.mpv) {
-            endwin();
-            std::cerr << "Failed to create MPV instance for " << station.name << std::endl;
-            g_quit_flag = true;
-            for(size_t k=0; k<i; ++k) if(g_stations[k].mpv) mpv_terminate_destroy(g_stations[k].mpv);
-            return 1;
-        }
-
-        check_mpv_error(mpv_initialize(station.mpv), "mpv_initialize for " + station.name);
-
-        mpv_set_property_string(station.mpv, "vo", "null");
-        mpv_set_property_string(station.mpv, "audio-display", "no");
-        mpv_set_property_string(station.mpv, "input-default-bindings", "no");
-        mpv_set_property_string(station.mpv, "input-vo-keyboard", "no");
-        mpv_set_property_string(station.mpv, "terminal", "no");
-        mpv_set_property_string(station.mpv, "msg-level", "all=warn");
-
-        check_mpv_error(mpv_observe_property(station.mpv, station.id, "media-title", MPV_FORMAT_STRING), "observe media-title for " + station.name);
-        check_mpv_error(mpv_observe_property(station.mpv, station.id, "eof-reached", MPV_FORMAT_FLAG), "observe eof-reached for " + station.name);
-
-        const char *cmd[] = {"loadfile", station.url.c_str(), "replace", nullptr};
-        check_mpv_error(mpv_command_async(station.mpv, 0, cmd), "loadfile for " + station.name);
-
-        // Set initial volume based on whether this is the active station
-        double initial_volume = (static_cast<int>(i) == g_active_station_idx) ? 100.0 : 0.0;
-        station.current_volume.store(initial_volume);
-        station.target_volume.store(initial_volume);
-        station.pre_mute_volume.store(100.0); // Default unmuted volume
-        mpv_set_property_async(station.mpv, 0, "volume", MPV_FORMAT_DOUBLE, &initial_volume);
-        station.current_title = "Connecting...";
-    }
-
-    std::thread mpv_thread(mpv_event_loop);
-
-    g_needs_redraw = true;
-    while (!g_quit_flag) {
-        if (g_needs_redraw && !g_quit_flag) {
-            redraw_ui();
-        }
-
-        int ch = getch();
-
-        if (ch != ERR) {
-            g_needs_redraw = true;
-            if (ch == KEY_UP) {
-                if (g_active_station_idx > 0) {
-                    switch_station(g_active_station_idx - 1);
-                }
-            } else if (ch == KEY_DOWN) {
-                if (g_active_station_idx < static_cast<int>(g_stations.size()) - 1) {
-                    switch_station(g_active_station_idx + 1);
-                }
-            } else if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
-                // Toggle mute for currently selected station
-                toggle_mute_station(g_active_station_idx);
-            } else if (ch == 'q' || ch == 'Q') {
-                g_quit_flag = true;
-                break;
-            } else {
-                g_needs_redraw = false;
-            }
-        }
-         std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-
-    g_quit_flag = true;
-
-    for (RadioStream& station : g_stations) {
-        if (station.mpv) {
-            const char *quit_cmd[] = {"quit", nullptr};
-            mpv_command_async(station.mpv, 0, quit_cmd);
-        }
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-    if (mpv_thread.joinable()) {
-        mpv_thread.join();
-    }
-
-    for (RadioStream& station : g_stations) {
-        if (station.mpv) {
-            mpv_terminate_destroy(station.mpv);
-            station.mpv = nullptr;
-        }
-    }
-
-    if (stdscr != NULL && !isendwin()) {
-      clear();
-      mvprintw(0,0, "Exiting radio switcher...");
-      refresh();
-      std::this_thread::sleep_for(std::chrono::milliseconds(500));
-      endwin();
-    }
-
+    std::cout << "Radio player exited gracefully." << std::endl;
     return 0;
 }
