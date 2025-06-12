@@ -4,7 +4,7 @@
 
 #include <vector>
 #include <string>
-#include <nlohmann/json_fwd.hpp> // Forward-declare json
+#include "nlohmann/json_fwd.hpp" // Use forward declaration
 
 // Forward declaration to avoid including the full RadioStream header here.
 class RadioStream;
@@ -19,7 +19,8 @@ public:
 
 private:
     // Main layout drawers
-    void draw_header_bar(int width);
+    // THIS IS THE FIX: Added the double parameter for volume.
+    void draw_header_bar(int width, double current_volume);
     void draw_footer_bar(int y, int width);
     void draw_full_mode(int width, int height, const std::vector<RadioStream>& stations, int active_station_idx, const nlohmann::json& history);
 

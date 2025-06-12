@@ -1,8 +1,8 @@
 // src/RadioPlayer.cpp
 #include "RadioPlayer.h"
 #include "UIManager.h"
-#include "nlohmann/json.hpp" // Include the full JSON header for implementation
-#include "Utils.h" // Include our utility header
+#include "nlohmann/json.hpp"
+#include "Utils.h"
 
 #include <algorithm>
 #include <cstring>
@@ -12,7 +12,6 @@
 #include <iostream>
 #include <ncurses.h>
 
-// Define configuration constants
 #define FADE_TIME_MS 900
 #define SMALL_MODE_TOTAL_TIME_SECONDS 720
 
@@ -23,9 +22,9 @@ RadioPlayer::RadioPlayer(std::vector<std::pair<std::string, std::string>> statio
       m_active_station_idx(0),
       m_quit_flag(false),
       m_small_mode_active(false),
+      m_song_history(std::make_unique<json>(json::object())),
       m_small_mode_start_time(std::chrono::steady_clock::now()),
-      m_station_switch_duration(0),
-      m_song_history(std::make_unique<json>(json::object())) // Initialize the unique_ptr
+      m_station_switch_duration(0)
 {
     if (station_data.empty()) {
         throw std::runtime_error("No radio stations provided.");
@@ -57,7 +56,6 @@ void RadioPlayer::run() {
 
     while (!m_quit_flag) {
         if (needs_redraw) {
-            // THE FIX IS HERE: Pass the history object to the draw function.
             m_ui->draw(m_stations, m_active_station_idx, m_small_mode_active, *m_song_history);
             needs_redraw = false;
         }
@@ -218,20 +216,23 @@ RadioStream* RadioPlayer::find_station_by_id(int station_id) {
 }
 
 void RadioPlayer::on_title_changed(RadioStream& station, const std::string& new_title) {
-    if (new_title == station.getCurrentTitle() || new_title.empty() || new_title == "N/A" || new_title == "Initializing...") {
+    if (new_title.empty() || new_title == station.getCurrentTitle() || new_title == "N/A" || new_title == "Initializing...") {
         if (new_title != station.getCurrentTitle() && !new_title.empty()) {
              station.setCurrentTitle(new_title);
         }
         return;
     }
+    
+    // Add to full history for saving to disk
     auto now = std::chrono::system_clock::now();
     std::time_t now_c = std::chrono::system_clock::to_time_t(now);
-    char time_buf[100];
-    std::strftime(time_buf, sizeof(time_buf), "%H:%M", std::localtime(&now_c));
-    json song_entry = { std::string(time_buf), new_title };
+    char full_time_buf[100];
+    std::strftime(full_time_buf, sizeof(full_time_buf), "%Y-%m-%d %H:%M:%S", std::localtime(&now_c));
+    json history_entry_for_file = { std::string(full_time_buf), new_title };
+    
     {
         std::lock_guard<std::mutex> lock(m_history_mutex);
-        (*m_song_history)[station.getName()].push_back(song_entry);
+        (*m_song_history)[station.getName()].push_back(history_entry_for_file);
     }
     save_history_to_disk();
     station.setCurrentTitle(new_title);
@@ -244,7 +245,6 @@ void RadioPlayer::on_stream_eof(RadioStream& station) {
 }
 
 void RadioPlayer::handle_mpv_event(mpv_event* event) {
-    // We only care about property change events with a valid station
     if (event->event_id != MPV_EVENT_PROPERTY_CHANGE) return;
     mpv_event_property* prop = (mpv_event_property*)event->data;
     RadioStream* station = find_station_by_id(event->reply_userdata);
