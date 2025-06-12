@@ -1,4 +1,4 @@
-//Radio Switcher - Discovery mode with Fading, Mute, Refactored For Maintainability
+//Radio Switcher - Discovery mode with Fading, Mute, Refactored For Maintainability + Small Mode
 //
 // sudo dnf install gcc-c++ mpv-devel ncurses-devel pkg-config make
 // g++ radio.cpp -o radio $(pkg-config --cflags --libs mpv ncurses) -pthread
@@ -6,6 +6,7 @@
 // - with Audio Fading
 // - Mute functionality
 // - Restructured
+// - Small Mode: Auto-rotation through all stations
 // Thanks to gemini-2.5-pro-preview-06-05 and claude-sonnet-4-20250514
 
 #include <iostream>
@@ -24,6 +25,7 @@
 
 // === Configuration ===
 #define FADE_TIME_MS 900
+#define SMALL_MODE_TOTAL_TIME_SECONDS 720  // 12 minutes total
 
 // === Helper Functions ===
 void check_mpv_error(int status, const std::string& context) {
@@ -125,11 +127,12 @@ public:
         }
     }
 
-    std::string getStatusString(bool is_active) const {
+    std::string getStatusString(bool is_active, bool is_small_mode = false) const {
         if (m_is_muted) return "Muted";
         if (m_is_fading) {
             return m_target_volume > m_current_volume ? "Fading In" : "Fading Out";
         }
+        if (is_small_mode && is_active) return "Auto-Playing";
         return is_active ? "Playing" : "Silent";
     }
 
@@ -190,21 +193,30 @@ public:
     ~UIManager() {
         if (stdscr != NULL && !isendwin()) { endwin(); }
     }
-    void draw(const std::vector<RadioStream>& stations, int active_station_idx) {
+    void draw(const std::vector<RadioStream>& stations, int active_station_idx, bool small_mode_active = false, int remaining_seconds = 0) {
         clear();
-        mvprintw(0, 0, "Radio Switcher (Refactored) | Q: Quit | Enter: Mute/Unmute");
+        if (small_mode_active) {
+            mvprintw(0, 0, "Radio Switcher - SMALL MODE ACTIVE | S: Exit Small Mode | Q: Quit");
+            mvprintw(1, 0, "Auto-rotating through all stations. Time left for current: %d seconds", remaining_seconds);
+        } else {
+            mvprintw(0, 0, "Radio Switcher (Refactored) | Q: Quit | Enter: Mute/Unmute | S: Small Mode");
+        }
+        
         for (size_t i = 0; i < stations.size(); ++i) {
             const auto& station = stations[i];
             bool is_active = (static_cast<int>(i) == active_station_idx);
             if (is_active) attron(A_REVERSE);
-            std::string status = station.getStatusString(is_active);
+            std::string status = station.getStatusString(is_active, small_mode_active);
             mvprintw(2 + i, 2, "[%s] %s: %s (Vol: %.0f)",
                      status.c_str(), station.getName().c_str(),
                      station.getCurrentTitle().c_str(), station.getCurrentVolume());
             if (is_active) attroff(A_REVERSE);
         }
-        if (!stations.empty()) {
+        
+        if (!stations.empty() && !small_mode_active) {
             mvprintw(LINES - 2, 0, "Use UP/DOWN arrows to switch stations.");
+        } else if (small_mode_active) {
+            mvprintw(LINES - 2, 0, "Small Mode: Discovering radio stations automatically...");
         }
         refresh();
     }
@@ -218,43 +230,72 @@ public:
 class RadioPlayer {
 public:
     RadioPlayer(std::vector<std::pair<std::string, std::string>> station_data)
-        : m_ui(std::make_unique<UIManager>()), m_active_station_idx(0), m_quit_flag(false) {
+        : m_ui(std::make_unique<UIManager>()), m_active_station_idx(0), m_quit_flag(false),
+          m_small_mode_active(false), m_small_mode_start_time(std::chrono::steady_clock::now()),
+          m_station_switch_duration(0) {
         if (station_data.empty()) {
             throw std::runtime_error("No radio stations provided.");
         }
         for (size_t i = 0; i < station_data.size(); ++i) {
             m_stations.emplace_back(i, station_data[i].first, station_data[i].second);
         }
+        
+        // Calculate time per station for small mode
+        m_station_switch_duration = SMALL_MODE_TOTAL_TIME_SECONDS / static_cast<int>(m_stations.size());
+        
         for (size_t i = 0; i < m_stations.size(); ++i) {
             double initial_volume = (i == m_active_station_idx) ? 100.0 : 0.0;
             m_stations[i].initialize(initial_volume);
         }
     }
+    
     ~RadioPlayer() {
         m_quit_flag = true;
         if (m_mpv_event_thread.joinable()) {
             m_mpv_event_thread.join();
         }
     }
+    
     void run() {
         m_mpv_event_thread = std::thread(&RadioPlayer::mpv_event_loop, this);
         bool needs_redraw = true;
+        
         while (!m_quit_flag) {
             if (needs_redraw) {
-                m_ui->draw(m_stations, m_active_station_idx);
+                int remaining_seconds = 0;
+                if (m_small_mode_active) {
+                    remaining_seconds = get_remaining_seconds_for_current_station();
+                }
+                m_ui->draw(m_stations, m_active_station_idx, m_small_mode_active, remaining_seconds);
                 needs_redraw = false;
             }
+            
+            // Handle small mode auto-switching
+            if (m_small_mode_active && should_switch_station()) {
+                int next_station = (m_active_station_idx + 1) % static_cast<int>(m_stations.size());
+                switch_station(next_station);
+                m_small_mode_start_time = std::chrono::steady_clock::now();
+                needs_redraw = true;
+            }
+            
             int ch = m_ui->getInput();
             if (ch != ERR) {
                 handle_input(ch);
                 needs_redraw = true;
             }
+            
             for (const auto& station : m_stations) {
                 if (station.isFading()) {
                     needs_redraw = true;
                     break;
                 }
             }
+            
+            // Update display more frequently in small mode to show countdown
+            if (m_small_mode_active) {
+                needs_redraw = true;
+            }
+            
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
         }
     }
@@ -265,17 +306,31 @@ private:
     int m_active_station_idx;
     std::atomic<bool> m_quit_flag;
     std::thread m_mpv_event_thread;
+    
+    // Small mode variables
+    std::atomic<bool> m_small_mode_active;
+    std::chrono::steady_clock::time_point m_small_mode_start_time;
+    int m_station_switch_duration; // seconds per station
 
     void handle_input(int ch) {
         switch (ch) {
             case KEY_UP:
-                if (m_active_station_idx > 0) { switch_station(m_active_station_idx - 1); }
+                if (!m_small_mode_active && m_active_station_idx > 0) { 
+                    switch_station(m_active_station_idx - 1); 
+                }
                 break;
             case KEY_DOWN:
-                if (m_active_station_idx < static_cast<int>(m_stations.size()) - 1) { switch_station(m_active_station_idx + 1); }
+                if (!m_small_mode_active && m_active_station_idx < static_cast<int>(m_stations.size()) - 1) { 
+                    switch_station(m_active_station_idx + 1); 
+                }
                 break;
             case '\n': case '\r': case KEY_ENTER:
-                toggle_mute_station(m_active_station_idx);
+                if (!m_small_mode_active) {
+                    toggle_mute_station(m_active_station_idx);
+                }
+                break;
+            case 's': case 'S':
+                toggle_small_mode();
                 break;
             case 'q': case 'Q':
                 m_quit_flag = true;
@@ -283,16 +338,51 @@ private:
         }
     }
 
+    void toggle_small_mode() {
+        if (m_small_mode_active) {
+            // Exit small mode
+            m_small_mode_active = false;
+        } else {
+            // Enter small mode
+            m_small_mode_active = true;
+            m_small_mode_start_time = std::chrono::steady_clock::now();
+            
+            // Ensure current station is playing and not muted
+            RadioStream& current_station = m_stations[m_active_station_idx];
+            if (current_station.isMuted()) {
+                current_station.setMuted(false);
+                fade_audio(current_station, current_station.getCurrentVolume(), current_station.getPreMuteVolume(), FADE_TIME_MS / 2);
+            } else if (current_station.getCurrentVolume() < 50.0) {
+                fade_audio(current_station, current_station.getCurrentVolume(), 100.0, FADE_TIME_MS);
+            }
+        }
+    }
+
+    bool should_switch_station() {
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_small_mode_start_time);
+        return elapsed.count() >= m_station_switch_duration;
+    }
+
+    int get_remaining_seconds_for_current_station() {
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_small_mode_start_time);
+        return std::max(0, m_station_switch_duration - static_cast<int>(elapsed.count()));
+    }
+
     void switch_station(int new_idx) {
         if (new_idx == m_active_station_idx) return;
+        
         RadioStream& current_station = m_stations[m_active_station_idx];
         if (!current_station.isMuted()) {
             fade_audio(current_station, current_station.getCurrentVolume(), 0.0, FADE_TIME_MS);
         }
+        
         RadioStream& new_station = m_stations[new_idx];
         if (!new_station.isMuted()) {
             fade_audio(new_station, new_station.getCurrentVolume(), 100.0, FADE_TIME_MS);
         }
+        
         m_active_station_idx = new_idx;
     }
 
@@ -386,8 +476,8 @@ int main() {
 
         {"bigFM OldSchool Deutschrap", "https://stream.bigfm.de/oldschooldeutschrap/aac-128"},
         {"bigFM Dance", "https://audiotainment-sw.streamabc.net/atsw-dance-aac-128-2321625"},
-        {"bigFM DanceHall", "https://audiotainment-sw.streamabc.net/atsw-dancehall-aac-128-5420319"},
-        {"bigFM GrooveNight", "https://audiotainment-sw.streamabc.net/atsw-groovenight-aac-128-5346495"},
+        //{"bigFM DanceHall", "https://audiotainment-sw.streamabc.net/atsw-dancehall-aac-128-5420319"},
+        //{"bigFM GrooveNight", "https://audiotainment-sw.streamabc.net/atsw-groovenight-aac-128-5346495"},
 
         {"BreakZ", "https://rautemusik.stream43.radiohost.de/breakz"},
 
@@ -400,19 +490,25 @@ int main() {
         {"Sunshine Live - EDM", "http://stream.sunshine-live.de/edm/mp3-192/stream.sunshine-live.de/"},
         {"Sunshine Live - Amsterdam Club", "https://stream.sunshine-live.de/ade18club/mp3-128"},
         {"Sunshine Live - Charts", "http://stream.sunshine-live.de/sp6/mp3-128"},
-        {"Sunshine Live - EuroDance", "https://sunsl.streamabc.net/sunsl-eurodance-mp3-192-9832422"},
+        //{"Sunshine Live - EuroDance", "https://sunsl.streamabc.net/sunsl-eurodance-mp3-192-9832422"},
         {"Sunshine Live - Summer Beats", "http://stream.sunshine-live.de/sp2/aac-64"},
 
         {"Kiss FM - German Beats", "https://topradio-stream31.radiohost.de/kissfm-deutschrap-hits_mp3-128"},
         {"Kiss FM - DJ Sets", "https://topradio.stream41.radiohost.de/kissfm-electro_mp3-192"},
         {"Kiss FM - Remix", "https://topradio.stream05.radiohost.de/kissfm-remix_mp3-192"},
-        {"Kiss FM - Events", "https://topradio.stream10.radiohost.de/kissfm-event_mp3-192"},
+        //{"Kiss FM - Events", "https://topradio.stream10.radiohost.de/kissfm-event_mp3-192"},
 
         {"Energy - Dance", "https://edge01.streamonkey.net/energy-dance/stream/mp3"},
-        {"Energy - MasterMix", "https://scdn.nrjaudio.fm/adwz1/de/33027/mp3_128.mp3"},
+        //{"Energy - MasterMix", "https://scdn.nrjaudio.fm/adwz1/de/33027/mp3_128.mp3"},
         {"Energy - Deutschrap", "https://edge07.streamonkey.net/energy-deutschrap"},
 
-        {"PulseEDM Dance Radio", "http://pulseedm.cdnstream1.com:8124/1373_128.m3u"}
+        {"PulseEDM Dance Radio", "http://pulseedm.cdnstream1.com:8124/1373_128.m3u"},
+        {"Puls Radio Dance", "https://sc4.gergosnet.com/pulsHD.mp3"},
+        {"Puls Radio Club", "https://str3.openstream.co/2138"},
+        {"Los 40 Dance", "https://playerservices.streamtheworld.com/api/livestream-redirect/LOS40_DANCEAAC.aac"},
+        {"RadCap Uplifting", "http://79.111.119.111:8000/upliftingtrance"},
+        {"Regenbogen", "https://streams.regenbogen.de/"},
+        {"RadCap ClubDance", "http://79.111.119.111:8000/clubdance"},
     };
 
     try {
