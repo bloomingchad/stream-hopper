@@ -46,27 +46,11 @@ sudo apt install build-essential libmpv-dev libncurses5-dev pkg-config
 sudo pacman -s gcc make pkg-config mpv ncurses
 ```
 
-### get nlohmann/json
-download the single-header json library:
-```bash
-wget https://github.com/nlohmann/json/releases/download/v3.11.3/json.hpp
-```
-
 ## 🚀 build & run
 
 1. **download the json header:**
    ```bash
-   wget https://github.com/nlohmann/json/releases/download/v3.11.3/json.hpp
-   ```
-
-2. **compile the application:**
-   ```bash
-   g++ radio.cpp -o stream-hopper $(pkg-config --cflags --libs mpv ncurses) -pthread
-   ```
-
-3. **run it:**
-   ```bash
-   ./stream-hopper
+   make
    ```
 
 ## 🎮 controls
