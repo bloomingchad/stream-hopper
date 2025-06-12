@@ -32,7 +32,7 @@ UIManager::UIManager() {
     use_default_colors();
     init_pair(1, COLOR_YELLOW, -1);
     init_pair(2, COLOR_GREEN, -1);
-    init_pair(3, COLOR_CYAN, -1); // For focused panel
+    init_pair(3, COLOR_CYAN, -1);
 }
 
 UIManager::~UIManager() {
@@ -41,7 +41,6 @@ UIManager::~UIManager() {
     }
 }
 
-// UPDATED: Main draw function signature
 void UIManager::draw(const std::vector<RadioStream>& stations, int active_station_idx, 
                      const nlohmann::json& history, ActivePanel active_panel, int scroll_offset) {
     clear();
@@ -49,7 +48,7 @@ void UIManager::draw(const std::vector<RadioStream>& stations, int active_statio
     getmaxyx(stdscr, height, width);
 
     double display_vol = 0.0;
-    bool is_small_mode = false; // For now, we assume not in small mode for this feature
+    bool is_small_mode = false;
     if (!stations.empty()) {
         const auto& active_station = stations[active_station_idx];
         display_vol = active_station.isMuted() ? 0.0 : active_station.getCurrentVolume();
@@ -105,7 +104,6 @@ void UIManager::draw_footer_bar(int y, int width, bool is_compact, bool is_small
 }
 
 void UIManager::draw_compact_mode(int width, int height, const std::vector<RadioStream>& stations, int active_idx) {
-    // This function remains unchanged for now
     if (stations.empty()) return;
     
     const RadioStream& active_station = stations[active_idx];
@@ -134,7 +132,6 @@ void UIManager::draw_compact_mode(int width, int height, const std::vector<Radio
     }
 }
 
-// UPDATED: Pass focus and scroll state down to panel drawers
 void UIManager::draw_full_mode(int width, int height, const std::vector<RadioStream>& stations, int active_station_idx, 
                                const nlohmann::json& history, ActivePanel active_panel, int scroll_offset) {
     if (stations.empty()) return;
@@ -150,7 +147,6 @@ void UIManager::draw_full_mode(int width, int height, const std::vector<RadioStr
     draw_history_panel(1 + top_right_h, left_panel_w, right_panel_w, bottom_right_h, current_station, history, active_panel == ActivePanel::HISTORY, scroll_offset);
 }
 
-// UPDATED: Signature to accept focus state
 void UIManager::draw_stations_panel(int y, int x, int w, int h, const std::vector<RadioStream>& stations, 
                                     int active_station_idx, bool is_focused) {
     draw_box(y, x, w, h, "STATIONS", is_focused);
@@ -185,7 +181,7 @@ void UIManager::draw_stations_panel(int y, int x, int w, int h, const std::vecto
 }
 
 void UIManager::draw_now_playing_panel(int y, int x, int w, int h, const RadioStream& station) {
-    draw_box(y, x, w, h, "NOW PLAYING", false); // This panel is never focused
+    draw_box(y, x, w, h, "NOW PLAYING", false);
     int inner_w = w - 4;
 
     std::string title = station.getCurrentTitle();
@@ -210,19 +206,26 @@ void UIManager::draw_now_playing_panel(int y, int x, int w, int h, const RadioSt
     }
 }
 
-// UPDATED: Signature to accept focus and scroll state
+// REWRITTEN: This function now implements scrolling.
 void UIManager::draw_history_panel(int y, int x, int w, int h, const RadioStream& station, 
                                    const nlohmann::json& history, bool is_focused, int scroll_offset) {
     draw_box(y, x, w, h, "RECENT HISTORY", is_focused);
     int inner_w = w - 5;
+    int panel_height = h - 2;
 
     const auto& station_name = station.getName();
     if (history.contains(station_name)) {
         const auto& station_history = history.at(station_name);
+        if (station_history.empty()) return;
+
+        // Draw the visible part of the history list
         int display_count = 0;
-        // Iterate backwards to show most recent first
-        for (auto it = station_history.rbegin(); it != station_history.rend() && display_count < h - 2; ++it) {
-            // We'll implement scrolling logic in the next step
+        auto start_it = station_history.rbegin();
+        if (scroll_offset < (int)station_history.size()) {
+            std::advance(start_it, scroll_offset);
+        }
+
+        for (auto it = start_it; it != station_history.rend() && display_count < panel_height; ++it, ++display_count) {
             const auto& entry = *it;
             if (entry.is_array() && entry.size() == 2) {
                 std::string time_str = entry[0].get<std::string>();
@@ -237,16 +240,15 @@ void UIManager::draw_history_panel(int y, int x, int w, int h, const RadioStream
 
                 std::string line = time_str + " │ " + title_str;
                 mvwprintw(stdscr, y + 1 + display_count, x + 3, "%s", truncate_string(line, inner_w).c_str());
-                display_count++;
             }
         }
     }
 }
 
-// UPDATED: Signature to accept focus state
+// REWRITTEN: This function now colors the title text when focused.
 void UIManager::draw_box(int y, int x, int w, int h, const std::string& title, bool is_focused) {
     if (is_focused) {
-        attron(COLOR_PAIR(3)); // Use a color to show focus
+        attron(COLOR_PAIR(3));
     }
 
     mvwhline(stdscr, y, x + 1, ACS_HLINE, w - 2);
@@ -259,7 +261,13 @@ void UIManager::draw_box(int y, int x, int w, int h, const std::string& title, b
     mvwaddch(stdscr, y + h - 1, x + w - 1, ACS_LRCORNER);
     
     if (!title.empty()) {
+        if (is_focused) {
+            attron(A_BOLD);
+        }
         mvwprintw(stdscr, y, x + 3, " %s ", title.c_str());
+        if (is_focused) {
+            attroff(A_BOLD);
+        }
     }
 
     if (is_focused) {

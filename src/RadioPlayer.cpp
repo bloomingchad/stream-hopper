@@ -58,7 +58,6 @@ void RadioPlayer::run() {
 
     while (!m_quit_flag) {
         if (needs_redraw) {
-            // UPDATED: Pass the new state to the UI
             m_ui->draw(m_stations, m_active_station_idx, *m_song_history, m_active_panel, m_history_scroll_offset);
             needs_redraw = false;
         }
@@ -76,7 +75,6 @@ void RadioPlayer::run() {
 }
 
 bool RadioPlayer::update_state() {
-    // This function remains unchanged from the previous step
     if (m_small_mode_active && should_switch_station()) {
         int next_station = (m_active_station_idx + 1) % static_cast<int>(m_stations.size());
         switch_station(next_station);
@@ -94,16 +92,12 @@ bool RadioPlayer::update_state() {
     return false;
 }
 
-// REMOVED: on_key_up and on_key_down are no longer needed,
-// their logic is moved into handle_input.
-
 void RadioPlayer::on_key_enter() {
     if (!m_stations.empty()) {
         toggle_mute_station(m_active_station_idx);
     }
 }
 
-// REWRITTEN: The main input handling logic is now context-aware.
 void RadioPlayer::handle_input(int ch) {
     switch (ch) {
         case KEY_UP:
@@ -124,12 +118,19 @@ void RadioPlayer::handle_input(int ch) {
                     switch_station(m_active_station_idx + 1);
                 }
             } else if (m_active_panel == ActivePanel::HISTORY) {
-                // We'll add a check later to prevent scrolling past the end
-                m_history_scroll_offset++;
+                // *** THIS IS THE FIX ***
+                // Add a boundary check to prevent scrolling past the end.
+                const auto& current_station_name = m_stations[m_active_station_idx].getName();
+                if (m_song_history->contains(current_station_name)) {
+                    const auto& history_list = (*m_song_history)[current_station_name];
+                    if (m_history_scroll_offset < (int)history_list.size() - 1) {
+                        m_history_scroll_offset++;
+                    }
+                }
             }
             break;
 
-        case '\t': // Tab key
+        case '\t':
             if (m_active_panel == ActivePanel::STATIONS) {
                 m_active_panel = ActivePanel::HISTORY;
             } else {
@@ -156,8 +157,6 @@ void RadioPlayer::handle_input(int ch) {
             break;
     }
 }
-
-// The rest of the file remains the same. I will paste it for completeness.
 
 void RadioPlayer::toggle_small_mode() {
     m_small_mode_active = !m_small_mode_active;
