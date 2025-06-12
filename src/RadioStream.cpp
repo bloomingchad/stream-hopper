@@ -66,11 +66,12 @@ void RadioStream::initialize(double initial_volume) {
   
   m_current_volume = initial_volume;
   m_target_volume = initial_volume;
-  if(initial_volume > 0) {
-      m_is_muted = false;
-  } else {
-      m_is_muted = true;
-  }
+  
+  // *** THIS IS THE FIX ***
+  // A station is NOT muted just because its volume is 0. Mute is an explicit user action.
+  // The m_is_muted flag is correctly initialized to false by the constructor.
+  // We remove the faulty if/else block here.
+
   mpv_set_property_async(m_mpv, 0, "volume", MPV_FORMAT_DOUBLE, &initial_volume);
 }
 

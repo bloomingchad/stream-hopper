@@ -20,14 +20,8 @@ std::string truncate_string(const std::string& str, size_t width) {
 }
 
 UIManager::UIManager() {
-    // Set locale for wide character (emoji) support in ncurses
     setlocale(LC_ALL, "");
-    
-    // *** THIS IS THE FIX ***
-    // Reset the numeric locale to "C" (the default) so that libraries like
-    // mpv, which expect a '.' decimal separator, do not break.
     setlocale(LC_NUMERIC, "C");
-
     initscr();
     cbreak();
     noecho();
@@ -161,7 +155,17 @@ void UIManager::draw_stations_panel(int y, int x, int w, int h, const std::vecto
             attron(A_REVERSE);
         }
 
-        std::string status_icon = station.isMuted() ? "🔇" : "▶️ ";
+        // *** THIS IS THE FIX ***
+        std::string status_icon;
+        if (station.isMuted()) {
+            status_icon = "🔇 ";
+        } else if (station.getCurrentVolume() > 0) {
+            status_icon = "▶️ ";
+        } else {
+            // Use spaces for alignment when silent
+            status_icon = "   ";
+        }
+        
         std::string fav_icon = station.isFavorite() ? "⭐ " : "  ";
         
         std::string line = status_icon + fav_icon + station.getName();
