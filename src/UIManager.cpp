@@ -8,6 +8,8 @@
 #include <ctime>
 #include <algorithm>
 #include <locale.h>
+#include <iomanip>
+#include <sstream>
 #include "nlohmann/json.hpp"
 
 #define COMPACT_MODE_WIDTH 80
@@ -18,6 +20,46 @@ std::string truncate_string(const std::string& str, size_t width) {
     }
     return str;
 }
+
+// *** NEW HELPER FUNCTION ***
+// Formats a timestamp string based on how old it is.
+std::string format_history_timestamp(const std::string& ts_str) {
+    std::tm tm = {};
+    std::stringstream ss(ts_str);
+    ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
+    if (ss.fail()) {
+        // Fallback for just time "HH:MM"
+        return ts_str.substr(0, 5);
+    }
+
+    auto entry_time = std::chrono::system_clock::from_time_t(std::mktime(&tm));
+    auto now = std::chrono::system_clock::now();
+    
+    // Get the beginning of today
+    time_t t_now = std::chrono::system_clock::to_time_t(now);
+    std::tm tm_now = *std::localtime(&t_now);
+    tm_now.tm_hour = 0; tm_now.tm_min = 0; tm_now.tm_sec = 0;
+    auto today_start = std::chrono::system_clock::from_time_t(std::mktime(&tm_now));
+
+    if (entry_time >= today_start) {
+        // It's from today, show only time
+        char buf[10];
+        std::strftime(buf, sizeof(buf), "%H:%M", &tm);
+        return std::string(buf);
+    }
+
+    auto yesterday_start = today_start - std::chrono::hours(24);
+    if (entry_time >= yesterday_start) {
+        // It's from yesterday
+        return "Yesterday";
+    }
+
+    // It's older, show date e.g. "Jul 15"
+    char buf[20];
+    std::strftime(buf, sizeof(buf), "%b %d", &tm);
+    return std::string(buf);
+}
+
 
 UIManager::UIManager() {
     setlocale(LC_ALL, "");
@@ -206,7 +248,7 @@ void UIManager::draw_now_playing_panel(int y, int x, int w, int h, const RadioSt
     }
 }
 
-// REWRITTEN: This function now implements scrolling.
+// UPDATED: This function now uses the new date formatting helper.
 void UIManager::draw_history_panel(int y, int x, int w, int h, const RadioStream& station, 
                                    const nlohmann::json& history, bool is_focused, int scroll_offset) {
     draw_box(y, x, w, h, "RECENT HISTORY", is_focused);
@@ -218,7 +260,6 @@ void UIManager::draw_history_panel(int y, int x, int w, int h, const RadioStream
         const auto& station_history = history.at(station_name);
         if (station_history.empty()) return;
 
-        // Draw the visible part of the history list
         int display_count = 0;
         auto start_it = station_history.rbegin();
         if (scroll_offset < (int)station_history.size()) {
@@ -228,24 +269,22 @@ void UIManager::draw_history_panel(int y, int x, int w, int h, const RadioStream
         for (auto it = start_it; it != station_history.rend() && display_count < panel_height; ++it, ++display_count) {
             const auto& entry = *it;
             if (entry.is_array() && entry.size() == 2) {
-                std::string time_str = entry[0].get<std::string>();
+                std::string full_ts = entry[0].get<std::string>();
                 std::string title_str = entry[1].get<std::string>();
                 
-                if(time_str.length() > 5) {
-                    size_t pos = time_str.find(" ");
-                    if(pos != std::string::npos && pos + 6 <= time_str.length()) {
-                       time_str = time_str.substr(pos + 1, 5);
-                    }
-                }
-
-                std::string line = time_str + " │ " + title_str;
-                mvwprintw(stdscr, y + 1 + display_count, x + 3, "%s", truncate_string(line, inner_w).c_str());
+                // Use the new helper function
+                std::string time_str = format_history_timestamp(full_ts);
+                
+                // Right-align the time string for a clean look
+                std::stringstream line_ss;
+                line_ss << std::setw(9) << std::left << time_str << "│ " << title_str;
+                
+                mvwprintw(stdscr, y + 1 + display_count, x + 3, "%s", truncate_string(line_ss.str(), inner_w).c_str());
             }
         }
     }
 }
 
-// REWRITTEN: This function now colors the title text when focused.
 void UIManager::draw_box(int y, int x, int w, int h, const std::string& title, bool is_focused) {
     if (is_focused) {
         attron(COLOR_PAIR(3));
