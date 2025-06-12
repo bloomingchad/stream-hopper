@@ -1,6 +1,5 @@
 # Makefile for the stream-hopper project
 # Supports separate src, include, and build directories.
-# USES nlohmann/json as a pre-compiled library for faster builds.
 
 # Compiler and flags
 CXX := g++
@@ -18,7 +17,9 @@ SRCS := $(SRCDIR)/radio.cpp \
         $(SRCDIR)/RadioPlayer.cpp \
         $(SRCDIR)/RadioStream.cpp \
         $(SRCDIR)/UIManager.cpp \
-        $(SRCDIR)/json.cpp
+        $(SRCDIR)/json.cpp \
+        $(SRCDIR)/Utils.cpp
+
 
 OBJS := $(patsubst $(SRCDIR)/%.cpp,$(BUILDDIR)/%.o,$(SRCS))
 TARGET := $(BUILDDIR)/$(TARGET_NAME)
@@ -26,6 +27,7 @@ TARGET := $(BUILDDIR)/$(TARGET_NAME)
 # --- Include Paths & Libraries ---
 # Add our own include directory to the include paths
 CPPFLAGS := -I$(INCDIR)
+# Use pkg-config to get compiler and linker flags for dependencies
 CPPFLAGS += $(shell pkg-config --cflags mpv ncursesw)
 LIBS := $(shell pkg-config --libs mpv ncursesw)
 
@@ -48,4 +50,5 @@ $(BUILDDIR)/%.o: $(SRCDIR)/%.cpp
 
 clean:
 	@echo "==> Cleaning build directory..."
-	rm -rf $(BUILDDIR)
+	@rm -rf $(BUILDDIR)
+	@echo "==> Clean complete."

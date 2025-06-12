@@ -1,21 +1,14 @@
-// radio.cpp
+// src/radio.cpp
 #include <iostream>
 #include <vector>
 #include <string>
 #include <stdexcept>
-#include <ncurses.h> // For endwin()
+#include <ncurses.h>
 #include "RadioPlayer.h"
+#include "Utils.h" // <-- ADDED THIS INCLUDE
 
-// This helper is global as it can terminate the program.
-void check_mpv_error(int status, const std::string& context) {
-    if (status < 0) {
-        if (stdscr != NULL && !isendwin()) {
-            endwin();
-        }
-        std::cerr << "MPV Error (" << context << "): " << mpv_error_string(status) << std::endl;
-        exit(1);
-    }
-}
+// The global check_mpv_error function has been REMOVED from this file.
+// It is now included from "Utils.h"
 
 int main() {
     std::vector<std::pair<std::string, std::string>> station_data = {

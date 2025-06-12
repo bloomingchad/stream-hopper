@@ -1,21 +1,7 @@
 // RadioStream.cpp
 #include "RadioStream.h"
-#include <iostream>  // For std::cerr
-#include <ncurses.h> // For endwin()
+#include "Utils.h" // Include the new utility header
 #include <stdexcept>
-
-// This helper function is only used by this file currently.
-// Making it static limits its scope to this translation unit.
-static void check_mpv_error(int status, const std::string &context) {
-  if (status < 0) {
-    if (stdscr != NULL && !isendwin()) {
-      endwin();
-    }
-    std::cerr << "MPV Error (" << context << "): " << mpv_error_string(status)
-              << std::endl;
-    exit(1);
-  }
-}
 
 // --- Implementation of RadioStream methods ---
 
@@ -29,14 +15,14 @@ RadioStream::~RadioStream() { destroy(); }
 
 RadioStream::RadioStream(RadioStream &&other) noexcept
     : m_id(other.m_id), m_name(std::move(other.m_name)),
-      m_url(std::move(other.m_url)), m_mpv(other.m_mpv) {
-  m_is_fading.store(other.m_is_fading.load());
-  m_target_volume.store(other.m_target_volume.load());
-  m_current_volume.store(other.m_current_volume.load());
-  m_is_muted.store(other.m_is_muted.load());
-  m_pre_mute_volume.store(other.m_pre_mute_volume.load());
-  m_current_title = other.getCurrentTitle();
-  other.m_mpv = nullptr;
+      m_url(std::move(other.m_url)), m_mpv(other.m_mpv),
+      m_current_title(other.m_current_title),
+      m_is_fading(other.m_is_fading.load()),
+      m_target_volume(other.m_target_volume.load()),
+      m_current_volume(other.m_current_volume.load()),
+      m_is_muted(other.m_is_muted.load()),
+      m_pre_mute_volume(other.m_pre_mute_volume.load()) {
+    other.m_mpv = nullptr;
 }
 
 RadioStream &RadioStream::operator=(RadioStream &&other) noexcept {
@@ -46,12 +32,12 @@ RadioStream &RadioStream::operator=(RadioStream &&other) noexcept {
     m_name = std::move(other.m_name);
     m_url = std::move(other.m_url);
     m_mpv = other.m_mpv;
+    m_current_title = other.m_current_title;
     m_is_fading.store(other.m_is_fading.load());
     m_target_volume.store(other.m_target_volume.load());
     m_current_volume.store(other.m_current_volume.load());
     m_is_muted.store(other.m_is_muted.load());
     m_pre_mute_volume.store(other.m_pre_mute_volume.load());
-    m_current_title = other.getCurrentTitle();
     other.m_mpv = nullptr;
   }
   return *this;
