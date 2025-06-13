@@ -49,7 +49,7 @@ int main() {
         {"PulseEDM Dance Radio", "http://pulseedm.cdnstream1.com:8124/1373_128.m3u"},
         {"Puls Radio Dance", "https://sc4.gergosnet.com/pulsHD.mp3"},
         {"Puls Radio Club", "https://str3.openstream.co/2138"},
-        {"Los 40 Dance", "https://25493.live.streamtheworld.com/LOS40AAC.aac"},
+        {"Los 40 Dance", "https://playerservices.streamtheworld.com/api/livestream-redirect/LOS40_DANCE.mp3"},
         {"RadCap Uplifting", "http://79.111.119.111:8000/upliftingtrance"},
         {"Regenbogen", "https://streams.regenbogen.de/"},
         {"RadCap ClubDance", "http://79.111.119.111:8000/clubdance"},

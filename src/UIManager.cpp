@@ -111,7 +111,7 @@ void UIManager::draw_header_bar(int width, double current_volume) {
     tm* ltm = localtime(&now);
     char time_str[10];
     strftime(time_str, sizeof(time_str), "%H:%M", ltm);
-    std::string full_header = " STREAM HOPPER  |  LIVE  |  🔊 VOL: " + std::to_string((int)current_volume) + "%  |  🕐 " + time_str;
+    std::string full_header = " STREAM HOPPER  |  LIVE  |  🔊 VOL: " + std::to_string((int)current_volume) + "%  |  🕐 " + time_str + " ";
     attron(A_REVERSE);
     mvprintw(0, 0, "%s", std::string(width, ' ').c_str());
     mvprintw(0, 1, "%s", truncate_string(full_header, width - 2).c_str());
@@ -143,27 +143,39 @@ void UIManager::draw_compact_mode(int width, int height, const std::vector<Radio
     
     const RadioStream& active_station = stations[active_idx];
     
-    int box_h = 6;
+    // Part 1: Draw the "Now Playing" box at the top
+    int box_h = 5;
     draw_box(2, 1, width - 2, box_h, "▶️  NOW PLAYING", false);
 
-    std::string fav_star = active_station.isFavorite() ? "⭐ " : "";
-    mvwprintw(stdscr, 3, 3, "%s", truncate_string(fav_star + active_station.getName(), width - 6).c_str());
+    std::string fav_star_box = active_station.isFavorite() ? "⭐ " : "";
+    mvwprintw(stdscr, 3, 3, "%s", truncate_string(fav_star_box + active_station.getName(), width - 6).c_str());
     mvwprintw(stdscr, 4, 5, "%s", truncate_string(active_station.getCurrentTitle(), width - 8).c_str());
     
+    // Part 2: Draw the full, static list below with a selector
     int list_start_y = 2 + box_h;
-    int drawn_count = 0;
-    for (size_t i = 0; i < stations.size() && drawn_count < height - list_start_y - 1; ++i) {
-        if ((int)i == active_idx) continue;
-        
+    for (size_t i = 0; i < stations.size(); ++i) {
+        if (list_start_y + (int)i >= height - 1) break;
+
         const auto& station = stations[i];
-        std::string line = "  " + station.getName();
-        if (station.isFavorite()) {
-            line = "⭐" + line;
-        } else {
-            line = " " + line;
+        bool is_active = ((int)i == active_idx);
+
+        if (is_active) {
+            attron(A_REVERSE);
         }
-        mvwprintw(stdscr, list_start_y + drawn_count, 2, "%s", truncate_string(line, width - 5).c_str());
-        drawn_count++;
+
+        std::string status_icon = is_active ? (station.isMuted() ? " 🔇 " : " ▶️ ") : "  ";
+        std::string fav_icon = station.isFavorite() ? "⭐ " : "  ";
+        std::string line = status_icon + fav_icon + station.getName();
+        
+        if (is_active) {
+            mvwprintw(stdscr, list_start_y + i, 1, "%-*s", width - 2, truncate_string(line, width - 3).c_str());
+        } else {
+            mvwprintw(stdscr, list_start_y + i, 1, "%s", truncate_string(line, width - 2).c_str());
+        }
+
+        if (is_active) {
+            attroff(A_REVERSE);
+        }
     }
 }
 
