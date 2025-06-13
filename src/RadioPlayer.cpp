@@ -17,6 +17,16 @@
 
 using nlohmann::json;
 
+// Helper function to check if a string contains another string, case-insensitively
+bool contains_ci(const std::string& haystack, const std::string& needle) {
+    if (needle.empty()) return true;
+    auto it = std::search(haystack.begin(), haystack.end(),
+                          needle.begin(), needle.end(),
+                          [](char ch1, char ch2) { return std::toupper(ch1) == std::toupper(ch2); });
+    return (it != haystack.end());
+}
+
+
 RadioPlayer::RadioPlayer(std::vector<std::pair<std::string, std::string>> station_data)
     : m_ui(std::make_unique<UIManager>()),
       m_active_station_idx(0),
@@ -261,33 +271,44 @@ RadioStream* RadioPlayer::find_station_by_id(int station_id) {
 }
 
 void RadioPlayer::on_title_changed(RadioStream& station, const std::string& new_title) {
+    // Basic validation
     if (new_title.empty() || new_title == station.getCurrentTitle() || new_title == "N/A" || new_title == "Initializing...") {
-        if (new_title != station.getCurrentTitle() && !new_title.empty()) {
+        return;
+    }
+
+    // Heuristic: Ignore titles that are likely stream URLs or placeholder text
+    if (contains_ci(station.getURL(), new_title) || contains_ci(station.getName(), new_title)) {
+        // If it's just placeholder, we only update the UI but don't log it
+        if (new_title != station.getCurrentTitle()) {
              station.setCurrentTitle(new_title);
         }
         return;
+    }
+
+    std::string title_to_log = new_title;
+    if (!station.hasLoggedFirstSong()) {
+        title_to_log = "🆕 " + title_to_log;
+        station.setHasLoggedFirstSong(true);
     }
     
     auto now = std::chrono::system_clock::now();
     std::time_t now_c = std::chrono::system_clock::to_time_t(now);
     char full_time_buf[100];
-    
-    // *** THIS IS THE FIX ***
-    // The format string is now corrected to include the full date and time.
     std::strftime(full_time_buf, sizeof(full_time_buf), "%Y-%m-%d %H:%M:%S", std::localtime(&now_c));
     
-    json history_entry_for_file = { std::string(full_time_buf), new_title };
+    json history_entry_for_file = { std::string(full_time_buf), title_to_log };
     
     {
         std::lock_guard<std::mutex> lock(m_history_mutex);
         (*m_song_history)[station.getName()].push_back(history_entry_for_file);
     }
     save_history_to_disk();
-    station.setCurrentTitle(new_title);
+    station.setCurrentTitle(new_title); // UI shows the clean title
 }
 
 void RadioPlayer::on_stream_eof(RadioStream& station) {
     station.setCurrentTitle("Stream Error - Reconnecting...");
+    station.setHasLoggedFirstSong(false); // Reset for the new stream session
     const char* cmd[] = {"loadfile", station.getURL().c_str(), "replace", nullptr};
     check_mpv_error(mpv_command_async(station.getMpvHandle(), 0, cmd), "reconnect on eof");
 }

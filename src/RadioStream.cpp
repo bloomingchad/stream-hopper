@@ -7,7 +7,8 @@
 RadioStream::RadioStream(int id, std::string name, std::string url)
     : m_id(id), m_name(std::move(name)), m_url(std::move(url)), m_mpv(nullptr),
       m_current_title("Initializing..."), m_is_muted(false), m_current_volume(0.0),
-      m_pre_mute_volume(100.0), m_is_fading(false), m_target_volume(0.0), m_is_favorite(false) {}
+      m_pre_mute_volume(100.0), m_is_fading(false), m_target_volume(0.0), m_is_favorite(false),
+      m_has_logged_first_song(false) {}
 
 RadioStream::~RadioStream() { destroy(); }
 
@@ -20,7 +21,8 @@ RadioStream::RadioStream(RadioStream &&other) noexcept
       m_pre_mute_volume(other.m_pre_mute_volume.load()),
       m_is_fading(other.m_is_fading.load()),
       m_target_volume(other.m_target_volume.load()),
-      m_is_favorite(other.m_is_favorite.load())
+      m_is_favorite(other.m_is_favorite.load()),
+      m_has_logged_first_song(other.m_has_logged_first_song.load())
 {
     other.m_mpv = nullptr;
 }
@@ -39,6 +41,7 @@ RadioStream &RadioStream::operator=(RadioStream &&other) noexcept {
     m_is_fading.store(other.m_is_fading.load());
     m_target_volume.store(other.m_target_volume.load());
     m_is_favorite.store(other.m_is_favorite.load());
+    m_has_logged_first_song.store(other.m_has_logged_first_song.load());
     other.m_mpv = nullptr;
   }
   return *this;
@@ -67,11 +70,6 @@ void RadioStream::initialize(double initial_volume) {
   m_current_volume = initial_volume;
   m_target_volume = initial_volume;
   
-  // *** THIS IS THE FIX ***
-  // A station is NOT muted just because its volume is 0. Mute is an explicit user action.
-  // The m_is_muted flag is correctly initialized to false by the constructor.
-  // We remove the faulty if/else block here.
-
   mpv_set_property_async(m_mpv, 0, "volume", MPV_FORMAT_DOUBLE, &initial_volume);
 }
 
@@ -109,3 +107,6 @@ double RadioStream::getTargetVolume() const { return m_target_volume; }
 void RadioStream::setTargetVolume(double vol) { m_target_volume = vol; }
 bool RadioStream::isFavorite() const { return m_is_favorite; }
 void RadioStream::toggleFavorite() { m_is_favorite = !m_is_favorite; }
+
+bool RadioStream::hasLoggedFirstSong() const { return m_has_logged_first_song; }
+void RadioStream::setHasLoggedFirstSong(bool has_logged) { m_has_logged_first_song = has_logged; }
