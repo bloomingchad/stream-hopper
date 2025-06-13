@@ -68,7 +68,9 @@ void RadioPlayer::run() {
 
     while (!m_quit_flag) {
         if (needs_redraw) {
-            m_ui->draw(m_stations, m_active_station_idx, *m_song_history, m_active_panel, m_history_scroll_offset);
+            // *** THIS IS THE CHANGE ***
+            // Pass m_small_mode_active to the draw function
+            m_ui->draw(m_stations, m_active_station_idx, *m_song_history, m_active_panel, m_history_scroll_offset, m_small_mode_active);
             needs_redraw = false;
         }
         
@@ -287,7 +289,7 @@ void RadioPlayer::on_title_changed(RadioStream& station, const std::string& new_
 
     std::string title_to_log = new_title;
     if (!station.hasLoggedFirstSong()) {
-        title_to_log = "🆕 " + title_to_log;
+        title_to_log = "✨ " + title_to_log;
         station.setHasLoggedFirstSong(true);
     }
     

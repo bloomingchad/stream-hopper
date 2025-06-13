@@ -1,5 +1,6 @@
 // src/UIManager.cpp
 #include "UIManager.h"
+#include "RadioPlayer.h"
 #include "RadioStream.h"
 #include <ncurses.h>
 #include <string>
@@ -54,7 +55,7 @@ std::string format_history_timestamp(const std::string& ts_str) {
 }
 
 
-UIManager::UIManager() {
+UIManager::UIManager() : m_station_scroll_offset(0) { // Initialize the new variable
     setlocale(LC_ALL, "");
     setlocale(LC_NUMERIC, "C");
     initscr();
@@ -77,13 +78,12 @@ UIManager::~UIManager() {
 }
 
 void UIManager::draw(const std::vector<RadioStream>& stations, int active_station_idx, 
-                     const nlohmann::json& history, ActivePanel active_panel, int scroll_offset) {
+                     const nlohmann::json& history, ActivePanel active_panel, int scroll_offset, bool is_small_mode) {
     clear();
     int height, width;
     getmaxyx(stdscr, height, width);
 
     double display_vol = 0.0;
-    bool is_small_mode = false;
     if (!stations.empty()) {
         const auto& active_station = stations[active_station_idx];
         display_vol = active_station.isMuted() ? 0.0 : active_station.getCurrentVolume();
@@ -92,7 +92,7 @@ void UIManager::draw(const std::vector<RadioStream>& stations, int active_statio
     draw_header_bar(width, display_vol);
 
     if (width < COMPACT_MODE_WIDTH || is_small_mode) {
-        draw_compact_mode(width, height, stations, active_station_idx);
+        draw_compact_mode(width, height, stations, active_station_idx, history, active_panel, scroll_offset);
         draw_footer_bar(height - 1, width, true, is_small_mode);
     } else {
         draw_full_mode(width, height, stations, active_station_idx, history, active_panel, scroll_offset);
@@ -123,7 +123,7 @@ void UIManager::draw_footer_bar(int y, int width, bool is_compact, bool is_small
     if (is_small_mode) {
         footer_text = " [S] Exit Small Mode   [🚪] Quit ";
     } else if(is_compact) {
-        footer_text = " [🧭] Move [⏯️] Play [⭐] Fav [S] Full [🚪] Quit ";
+        footer_text = " [🧭] Navigate   [🔄] Switch Panel   [⭐] Favorite   [🚪] Quit ";
     } else {
         footer_text = " [🧭] Navigate   [⏯️] Play/Mute   [🔄] Switch Panel   [⭐] Favorite   [🚪] Quit ";
     }
@@ -138,43 +138,92 @@ void UIManager::draw_footer_bar(int y, int width, bool is_compact, bool is_small
     attroff(A_REVERSE);
 }
 
-void UIManager::draw_compact_mode(int width, int height, const std::vector<RadioStream>& stations, int active_idx) {
+void UIManager::draw_compact_mode(int width, int height, const std::vector<RadioStream>& stations, int active_idx,
+                                  const nlohmann::json& history, ActivePanel active_panel, int scroll_offset) {
     if (stations.empty()) return;
-    
     const RadioStream& active_station = stations[active_idx];
-    
-    // Part 1: Draw the "Now Playing" box at the top
-    int box_h = 5;
-    draw_box(2, 1, width - 2, box_h, "▶️  NOW PLAYING", false);
 
+    // 1. Define Panel Heights & Positions
+    int now_playing_h = 5;
+    int remaining_h = height - now_playing_h - 2;
+    int stations_h = std::max(3, static_cast<int>(remaining_h * 0.6));
+    int history_h = remaining_h - stations_h;
+
+    if (history_h < 3) {
+        stations_h = remaining_h;
+        history_h = 0;
+    }
+
+    int stations_y = 2 + now_playing_h;
+    int history_y = stations_y + stations_h;
+
+    // 2. Draw Now Playing Panel
+    draw_box(2, 1, width - 2, now_playing_h, "▶️  NOW PLAYING", false);
     std::string fav_star_box = active_station.isFavorite() ? "⭐ " : "";
     mvwprintw(stdscr, 3, 3, "%s", truncate_string(fav_star_box + active_station.getName(), width - 6).c_str());
     mvwprintw(stdscr, 4, 5, "%s", truncate_string(active_station.getCurrentTitle(), width - 8).c_str());
+
+    // 3. Draw Stations Panel with Scrolling
+    draw_box(stations_y, 1, width - 2, stations_h, "STATIONS", active_panel == ActivePanel::STATIONS);
     
-    // Part 2: Draw the full, static list below with a selector
-    int list_start_y = 2 + box_h;
-    for (size_t i = 0; i < stations.size(); ++i) {
-        if (list_start_y + (int)i >= height - 1) break;
+    // *** SCROLLING LOGIC PART 1 ***
+    // Adjust scroll offset to keep the active station in view.
+    int visible_items = stations_h > 2 ? stations_h - 2 : 0;
+    if (active_idx < m_station_scroll_offset) {
+        m_station_scroll_offset = active_idx;
+    }
+    if (active_idx >= m_station_scroll_offset + visible_items) {
+        m_station_scroll_offset = active_idx - visible_items + 1;
+    }
 
-        const auto& station = stations[i];
-        bool is_active = ((int)i == active_idx);
+    // *** SCROLLING LOGIC PART 2 ***
+    // Draw only the visible portion of the station list.
+    for (int i = 0; i < visible_items; ++i) {
+        int station_idx = m_station_scroll_offset + i;
+        if (station_idx >= (int)stations.size()) break;
 
+        const auto& station = stations[station_idx];
+        bool is_active = (station_idx == active_idx);
+        
         if (is_active) {
             attron(A_REVERSE);
         }
 
-        std::string status_icon = is_active ? (station.isMuted() ? " 🔇 " : " ▶️ ") : "  ";
-        std::string fav_icon = station.isFavorite() ? "⭐ " : "  ";
+        std::string status_icon = is_active ? (station.isMuted() ? "🔇 " : "▶️ ") : "  ";
+        std::string fav_icon = station.isFavorite() ? "⭐ " : " ";
         std::string line = status_icon + fav_icon + station.getName();
         
-        if (is_active) {
-            mvwprintw(stdscr, list_start_y + i, 1, "%-*s", width - 2, truncate_string(line, width - 3).c_str());
-        } else {
-            mvwprintw(stdscr, list_start_y + i, 1, "%s", truncate_string(line, width - 2).c_str());
-        }
+        mvwprintw(stdscr, stations_y + 1 + i, 3, "%-*s", width - 5, truncate_string(line, width - 6).c_str());
 
         if (is_active) {
             attroff(A_REVERSE);
+        }
+    }
+
+    // 4. Draw History Panel
+    if (history_h > 0) {
+        draw_box(history_y, 1, width - 2, history_h, "📝 RECENT HISTORY", active_panel == ActivePanel::HISTORY);
+        const auto& station_name = active_station.getName();
+        if (history.contains(station_name)) {
+            const auto& station_history = history.at(station_name);
+            int display_count = 0;
+            auto start_it = station_history.rbegin();
+            
+            if (scroll_offset < (int)station_history.size()) {
+                 std::advance(start_it, scroll_offset);
+            }
+
+            for (auto it = start_it; it != station_history.rend() && display_count < history_h - 2; ++it, ++display_count) {
+                const auto& entry = *it;
+                if (entry.is_array() && entry.size() == 2) {
+                    std::string full_ts = entry[0].get<std::string>();
+                    std::string title_str = entry[1].get<std::string>();
+                    std::string time_str = format_history_timestamp(full_ts);
+                    std::stringstream line_ss;
+                    line_ss << std::setw(9) << std::left << time_str << "│ " << title_str;
+                    mvwprintw(stdscr, history_y + 1 + display_count, 3, "%s", truncate_string(line_ss.str(), width - 6).c_str());
+                }
+            }
         }
     }
 }
@@ -188,6 +237,7 @@ void UIManager::draw_full_mode(int width, int height, const std::vector<RadioStr
     int top_right_h = 6;
     int bottom_right_h = height - top_right_h - 2;
 
+    // Apply scrolling to the full mode stations panel as well
     draw_stations_panel(1, 0, left_panel_w, height - 2, stations, active_station_idx, active_panel == ActivePanel::STATIONS);
     const RadioStream& current_station = stations[active_station_idx];
     draw_now_playing_panel(1, left_panel_w, right_panel_w, top_right_h, current_station);
@@ -199,9 +249,22 @@ void UIManager::draw_stations_panel(int y, int x, int w, int h, const std::vecto
     draw_box(y, x, w, h, "STATIONS", is_focused);
     int inner_w = w - 4;
 
-    for (int i = 0; i < h - 2 && i < (int)stations.size(); ++i) {
-        const auto& station = stations[i];
-        bool is_active = (i == active_station_idx);
+    // *** SCROLLING LOGIC PART 1 (Full Mode) ***
+    int visible_items = h > 2 ? h - 2 : 0;
+    if (active_station_idx < m_station_scroll_offset) {
+        m_station_scroll_offset = active_station_idx;
+    }
+    if (active_station_idx >= m_station_scroll_offset + visible_items) {
+        m_station_scroll_offset = active_station_idx - visible_items + 1;
+    }
+
+    // *** SCROLLING LOGIC PART 2 (Full Mode) ***
+    for (int i = 0; i < visible_items; ++i) {
+        int station_idx = m_station_scroll_offset + i;
+        if (station_idx >= (int)stations.size()) break;
+
+        const auto& station = stations[station_idx];
+        bool is_active = (station_idx == active_station_idx);
         
         if (is_active) {
             attron(A_REVERSE);
