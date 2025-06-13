@@ -111,7 +111,7 @@ void UIManager::draw_header_bar(int width, double current_volume) {
     tm* ltm = localtime(&now);
     char time_str[10];
     strftime(time_str, sizeof(time_str), "%H:%M", ltm);
-    std::string full_header = " STREAM HOPPER  |  LIVE  |  🔊 VOL: " + std::to_string((int)current_volume) + "%  |  🕐 " + time_str + " UTC ";
+    std::string full_header = " STREAM HOPPER  |  LIVE  |  🔊 VOL: " + std::to_string((int)current_volume) + "%  |  🕐 " + time_str;
     attron(A_REVERSE);
     mvprintw(0, 0, "%s", std::string(width, ' ').c_str());
     mvprintw(0, 1, "%s", truncate_string(full_header, width - 2).c_str());
