@@ -8,6 +8,7 @@
 #include <thread>
 #include <chrono>
 #include <mutex>
+#include <atomic> // <-- ADDED for std::atomic
 
 #include "RadioStream.h"
 #include "nlohmann/json.hpp"
@@ -25,7 +26,6 @@ public:
     ~RadioPlayer();
 
     void run();
-    int get_remaining_seconds_for_current_station(); // <-- ADDED THIS
 
 private:
     void handle_input(int ch);
@@ -46,6 +46,7 @@ private:
     void toggle_small_mode();
     bool should_switch_station();
     bool update_state();
+    int get_remaining_seconds_for_current_station();
 
     RadioStream* find_station_by_id(int station_id);
 
@@ -53,6 +54,7 @@ private:
     std::vector<RadioStream> m_stations;
     int m_active_station_idx;
     std::atomic<bool> m_quit_flag;
+    std::atomic<bool> m_needs_redraw; // <-- ADDED for event-driven redraw
 
     std::thread m_mpv_event_thread;
 

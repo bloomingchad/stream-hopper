@@ -33,6 +33,7 @@ RadioPlayer::RadioPlayer(std::vector<std::pair<std::string, std::string>> statio
     : m_ui(std::make_unique<UIManager>()),
       m_active_station_idx(0),
       m_quit_flag(false),
+      m_needs_redraw(true), // Start with a redraw needed
       m_small_mode_active(false),
       m_active_panel(ActivePanel::STATIONS),
       m_history_scroll_offset(0),
@@ -66,30 +67,21 @@ RadioPlayer::~RadioPlayer() {
 
 void RadioPlayer::run() {
     m_mpv_event_thread = std::thread(&RadioPlayer::mpv_event_loop, this);
-    bool needs_redraw = true;
 
     while (!m_quit_flag) {
-        if (needs_redraw) {
+        if (update_state()) {
+            m_needs_redraw = true;
+        }
+
+        if (m_needs_redraw.exchange(false)) { // Atomically check and reset the flag
             m_ui->draw(m_stations, m_active_station_idx, *m_song_history, m_active_panel, m_history_scroll_offset, 
                        m_small_mode_active, get_remaining_seconds_for_current_station(), m_station_switch_duration);
-            needs_redraw = false;
-        }
-        
-        // *** THIS IS THE CHANGE: Check for buffering state changes to trigger redraw ***
-        if (update_state()) {
-            needs_redraw = true;
-        }
-        for (const auto& station : m_stations) {
-            if (station.isBuffering()) { // A bit naive, but will force redraw
-                needs_redraw = true;
-                break;
-            }
         }
         
         int ch = m_ui->getInput();
         if (ch != ERR) {
             handle_input(ch);
-            needs_redraw = true;
+            m_needs_redraw = true; // Any user input triggers a redraw
         }
     }
 }
@@ -101,14 +93,19 @@ bool RadioPlayer::update_state() {
         m_small_mode_start_time = std::chrono::steady_clock::now();
         return true;
     }
+    
+    // In discovery mode, we need to redraw every second for the countdown
+    if (m_small_mode_active) {
+        return true;
+    }
+    
+    // If any station is fading, we need to keep redrawing to show the volume bar change
     for (const auto& station : m_stations) {
         if (station.isFading()) {
             return true;
         }
     }
-    if (m_small_mode_active) {
-        return true;
-    }
+    
     return false;
 }
 
@@ -201,6 +198,7 @@ bool RadioPlayer::should_switch_station() {
 }
 
 int RadioPlayer::get_remaining_seconds_for_current_station() {
+    if (!m_small_mode_active) return 0;
     auto now = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_small_mode_start_time);
     return std::max(0, m_station_switch_duration - static_cast<int>(elapsed.count()));
@@ -314,11 +312,13 @@ void RadioPlayer::on_title_changed(RadioStream& station, const std::string& new_
     }
     save_history_to_disk();
     station.setCurrentTitle(new_title);
+    m_needs_redraw = true; // A new title means we need to redraw
 }
 
 void RadioPlayer::on_stream_eof(RadioStream& station) {
     station.setCurrentTitle("Stream Error - Reconnecting...");
     station.setHasLoggedFirstSong(false);
+    m_needs_redraw = true; // The title changed
     const char* cmd[] = {"loadfile", station.getURL().c_str(), "replace", nullptr};
     check_mpv_error(mpv_command_async(station.getMpvHandle(), 0, cmd), "reconnect on eof");
 }
@@ -329,16 +329,25 @@ void RadioPlayer::handle_mpv_event(mpv_event* event) {
     RadioStream* station = find_station_by_id(event->reply_userdata);
     if (!station) return;
     
+    bool state_changed = false;
     if (strcmp(prop->name, "media-title") == 0 && prop->format == MPV_FORMAT_STRING) {
         char* title_cstr = *(char**)prop->data;
         on_title_changed(*station, title_cstr ? title_cstr : "N/A");
+        // on_title_changed handles its own redraw flag
     } else if (strcmp(prop->name, "eof-reached") == 0 && prop->format == MPV_FORMAT_FLAG) {
         if (*(int*)prop->data) {
             on_stream_eof(*station);
         }
-    } else if (strcmp(prop->name, "core-idle") == 0 && prop->format == MPV_FORMAT_FLAG) { // *** THIS IS THE CHANGE ***
+    } else if (strcmp(prop->name, "core-idle") == 0 && prop->format == MPV_FORMAT_FLAG) {
         bool is_idle = *(int*)prop->data;
-        station->setBuffering(is_idle);
+        if (station->isBuffering() != is_idle) {
+            station->setBuffering(is_idle);
+            state_changed = true;
+        }
+    }
+
+    if (state_changed) {
+        m_needs_redraw = true;
     }
 }
 
