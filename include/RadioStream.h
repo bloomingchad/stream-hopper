@@ -48,6 +48,9 @@ public:
     bool hasLoggedFirstSong() const;
     void setHasLoggedFirstSong(bool has_logged);
 
+    bool isBuffering() const; // <-- ADDED
+    void setBuffering(bool buffering); // <-- ADDED
+
 private:
     int m_id;
     std::string m_name;
@@ -64,6 +67,7 @@ private:
     std::atomic<double> m_target_volume;
     std::atomic<bool> m_is_favorite;
     std::atomic<bool> m_has_logged_first_song;
+    std::atomic<bool> m_is_buffering; // <-- ADDED
 };
 
 #endif // RADIOSTREAM_H

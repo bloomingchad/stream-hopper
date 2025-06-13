@@ -75,8 +75,15 @@ void RadioPlayer::run() {
             needs_redraw = false;
         }
         
+        // *** THIS IS THE CHANGE: Check for buffering state changes to trigger redraw ***
         if (update_state()) {
             needs_redraw = true;
+        }
+        for (const auto& station : m_stations) {
+            if (station.isBuffering()) { // A bit naive, but will force redraw
+                needs_redraw = true;
+                break;
+            }
         }
         
         int ch = m_ui->getInput();
@@ -172,7 +179,7 @@ void RadioPlayer::handle_input(int ch) {
 void RadioPlayer::toggle_small_mode() {
     m_small_mode_active = !m_small_mode_active;
     if (m_small_mode_active) {
-        m_ui->setInputTimeout(DISCOVERY_MODE_REFRESH_MS); // *** THIS IS THE CHANGE ***
+        m_ui->setInputTimeout(DISCOVERY_MODE_REFRESH_MS);
         m_small_mode_start_time = std::chrono::steady_clock::now();
         if(!m_stations.empty()) {
             RadioStream& current_station = m_stations[m_active_station_idx];
@@ -183,7 +190,7 @@ void RadioPlayer::toggle_small_mode() {
             }
         }
     } else {
-        m_ui->setInputTimeout(NORMAL_MODE_REFRESH_MS); // *** THIS IS THE CHANGE ***
+        m_ui->setInputTimeout(NORMAL_MODE_REFRESH_MS);
     }
 }
 
@@ -329,6 +336,9 @@ void RadioPlayer::handle_mpv_event(mpv_event* event) {
         if (*(int*)prop->data) {
             on_stream_eof(*station);
         }
+    } else if (strcmp(prop->name, "core-idle") == 0 && prop->format == MPV_FORMAT_FLAG) { // *** THIS IS THE CHANGE ***
+        bool is_idle = *(int*)prop->data;
+        station->setBuffering(is_idle);
     }
 }
 

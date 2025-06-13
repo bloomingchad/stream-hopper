@@ -8,7 +8,7 @@ RadioStream::RadioStream(int id, std::string name, std::string url)
     : m_id(id), m_name(std::move(name)), m_url(std::move(url)), m_mpv(nullptr),
       m_current_title("Initializing..."), m_is_muted(false), m_current_volume(0.0),
       m_pre_mute_volume(100.0), m_is_fading(false), m_target_volume(0.0), m_is_favorite(false),
-      m_has_logged_first_song(false) {}
+      m_has_logged_first_song(false), m_is_buffering(false) {} // <-- ADDED
 
 RadioStream::~RadioStream() { destroy(); }
 
@@ -22,7 +22,8 @@ RadioStream::RadioStream(RadioStream &&other) noexcept
       m_is_fading(other.m_is_fading.load()),
       m_target_volume(other.m_target_volume.load()),
       m_is_favorite(other.m_is_favorite.load()),
-      m_has_logged_first_song(other.m_has_logged_first_song.load())
+      m_has_logged_first_song(other.m_has_logged_first_song.load()),
+      m_is_buffering(other.m_is_buffering.load()) // <-- ADDED
 {
     other.m_mpv = nullptr;
 }
@@ -42,6 +43,7 @@ RadioStream &RadioStream::operator=(RadioStream &&other) noexcept {
     m_target_volume.store(other.m_target_volume.load());
     m_is_favorite.store(other.m_is_favorite.load());
     m_has_logged_first_song.store(other.m_has_logged_first_song.load());
+    m_is_buffering.store(other.m_is_buffering.load()); // <-- ADDED
     other.m_mpv = nullptr;
   }
   return *this;
@@ -58,12 +60,18 @@ void RadioStream::initialize(double initial_volume) {
   mpv_set_property_string(m_mpv, "input-default-bindings", "no");
   mpv_set_property_string(m_mpv, "terminal", "no");
   mpv_set_property_string(m_mpv, "msg-level", "all=warn");
+  
+  // *** THIS IS THE CHANGE ***
   check_mpv_error(
       mpv_observe_property(m_mpv, m_id, "media-title", MPV_FORMAT_STRING),
       "observe media-title");
   check_mpv_error(
       mpv_observe_property(m_mpv, m_id, "eof-reached", MPV_FORMAT_FLAG),
       "observe eof-reached");
+  check_mpv_error(
+      mpv_observe_property(m_mpv, m_id, "core-idle", MPV_FORMAT_FLAG),
+      "observe core-idle"); // <-- OBSERVE NEW PROPERTY
+  
   const char *cmd[] = {"loadfile", m_url.c_str(), "replace", nullptr};
   check_mpv_error(mpv_command_async(m_mpv, 0, cmd), "loadfile for " + m_name);
   
@@ -110,3 +118,7 @@ void RadioStream::toggleFavorite() { m_is_favorite = !m_is_favorite; }
 
 bool RadioStream::hasLoggedFirstSong() const { return m_has_logged_first_song; }
 void RadioStream::setHasLoggedFirstSong(bool has_logged) { m_has_logged_first_song = has_logged; }
+
+// *** THESE ARE THE NEW FUNCTIONS ***
+bool RadioStream::isBuffering() const { return m_is_buffering; }
+void RadioStream::setBuffering(bool buffering) { m_is_buffering = buffering; }

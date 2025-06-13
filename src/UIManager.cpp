@@ -78,7 +78,6 @@ UIManager::~UIManager() {
     }
 }
 
-// The new function implementation
 void UIManager::setInputTimeout(int milliseconds) {
     timeout(milliseconds);
 }
@@ -187,7 +186,14 @@ void UIManager::draw_compact_mode(int width, int height, const std::vector<Radio
             attron(A_REVERSE);
         }
 
-        std::string status_icon = is_active ? (station.isMuted() ? "🔇 " : "▶️ ") : "  ";
+        // *** THIS IS THE CHANGE ***
+        std::string status_icon = "  ";
+        if(is_active) {
+            if (station.isBuffering()) status_icon = "🤔 ";
+            else if (station.isMuted()) status_icon = "🔇 ";
+            else status_icon = "▶️ ";
+        }
+        
         std::string fav_icon = station.isFavorite() ? "⭐ " : " ";
         std::string line = status_icon + fav_icon + station.getName();
         
@@ -244,9 +250,12 @@ void UIManager::draw_stations_panel(int y, int x, int w, int h, const std::vecto
         if (is_active) {
             attron(A_REVERSE);
         }
-
+        
+        // *** THIS IS THE CHANGE ***
         std::string status_icon;
-        if (station.isMuted()) {
+        if (station.isBuffering()) {
+            status_icon = "🤔 ";
+        } else if (station.isMuted()) {
             status_icon = "🔇 ";
         } else if (station.getCurrentVolume() > 0) {
             status_icon = "▶️ ";
@@ -271,8 +280,9 @@ void UIManager::draw_now_playing_panel(int y, int x, int w, int h, const RadioSt
     draw_box(y, x, w, h, box_title, false);
 
     int inner_w = w - 4;
-
-    std::string title = station.getCurrentTitle();
+    
+    // *** THIS IS THE CHANGE ***
+    std::string title = station.isBuffering() ? "Buffering..." : station.getCurrentTitle();
     attron(A_BOLD);
     mvwprintw(stdscr, y + 2, x + 3, "%s", truncate_string(title, inner_w - 2).c_str());
     attroff(A_BOLD);
