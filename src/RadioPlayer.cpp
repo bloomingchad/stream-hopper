@@ -13,9 +13,9 @@
 #include <ncurses.h>
 
 #define FADE_TIME_MS 900
-// *** THIS IS THE CHANGE ***
-// Set to 1125 for a ~45s duration per station (1125 / 25 stations = 45s)
 #define SMALL_MODE_TOTAL_TIME_SECONDS 1125
+#define DISCOVERY_MODE_REFRESH_MS 1000 // Refresh rate for discovery mode
+#define NORMAL_MODE_REFRESH_MS 100    // Refresh rate for normal navigation
 
 using nlohmann::json;
 
@@ -172,6 +172,7 @@ void RadioPlayer::handle_input(int ch) {
 void RadioPlayer::toggle_small_mode() {
     m_small_mode_active = !m_small_mode_active;
     if (m_small_mode_active) {
+        m_ui->setInputTimeout(DISCOVERY_MODE_REFRESH_MS); // *** THIS IS THE CHANGE ***
         m_small_mode_start_time = std::chrono::steady_clock::now();
         if(!m_stations.empty()) {
             RadioStream& current_station = m_stations[m_active_station_idx];
@@ -181,6 +182,8 @@ void RadioPlayer::toggle_small_mode() {
                 fade_audio(current_station, current_station.getCurrentVolume(), 100.0, FADE_TIME_MS);
             }
         }
+    } else {
+        m_ui->setInputTimeout(NORMAL_MODE_REFRESH_MS); // *** THIS IS THE CHANGE ***
     }
 }
 

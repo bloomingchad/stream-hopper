@@ -14,6 +14,7 @@
 #include "nlohmann/json.hpp"
 
 #define COMPACT_MODE_WIDTH 80
+#define DEFAULT_INPUT_TIMEOUT 100 // Default responsiveness
 
 std::string truncate_string(const std::string& str, size_t width) {
     if (width > 3 && str.length() > width) {
@@ -63,7 +64,7 @@ UIManager::UIManager() : m_station_scroll_offset(0) {
     noecho();
     curs_set(0);
     keypad(stdscr, TRUE);
-    timeout(100);
+    timeout(DEFAULT_INPUT_TIMEOUT); // Use the defined default
     start_color();
     use_default_colors();
     init_pair(1, COLOR_YELLOW, -1);
@@ -75,6 +76,11 @@ UIManager::~UIManager() {
     if (stdscr != NULL && !isendwin()) {
         endwin();
     }
+}
+
+// The new function implementation
+void UIManager::setInputTimeout(int milliseconds) {
+    timeout(milliseconds);
 }
 
 void UIManager::draw(const std::vector<RadioStream>& stations, int active_station_idx, 
@@ -261,8 +267,6 @@ void UIManager::draw_stations_panel(int y, int x, int w, int h, const std::vecto
 
 void UIManager::draw_now_playing_panel(int y, int x, int w, int h, const RadioStream& station, bool is_small_mode,
                                        int remaining_seconds, int total_duration) {
-    // *** THIS IS THE CHANGE ***
-    // The title of the box is now conditional based on the mode.
     std::string box_title = is_small_mode ? "🤖 DISCOVERY MODE" : "▶️  NOW PLAYING";
     draw_box(y, x, w, h, box_title, false);
 

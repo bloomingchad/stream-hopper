@@ -20,12 +20,12 @@ public:
               int remaining_seconds, int total_duration);
 
     int getInput();
+    void setInputTimeout(int milliseconds); // <-- The new method
 
 private:
     void draw_header_bar(int width, double current_volume);
     void draw_footer_bar(int y, int width, bool is_compact, bool is_small_mode);
 
-    // *** THIS IS A CHANGE ***
     void draw_compact_mode(int width, int height, const std::vector<RadioStream>& stations, int active_idx,
                            const nlohmann::json& history, ActivePanel active_panel, int scroll_offset, bool is_small_mode,
                            int remaining_seconds, int total_duration);
@@ -36,7 +36,6 @@ private:
     
     void draw_stations_panel(int y, int x, int w, int h, const std::vector<RadioStream>& stations, int active_station_idx, bool is_focused);
     
-    // *** THIS IS A CHANGE ***
     void draw_now_playing_panel(int y, int x, int w, int h, const RadioStream& station, bool is_small_mode,
                                 int remaining_seconds, int total_duration);
     
