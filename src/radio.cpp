@@ -53,6 +53,12 @@ int main() {
         {"RadCap Uplifting", "http://79.111.119.111:8000/upliftingtrance"},
         {"Regenbogen", "https://streams.regenbogen.de/"},
         {"RadCap ClubDance", "http://79.111.119.111:8000/clubdance"},
+        {"0nlineradio - Remix", "https://stream2-0nlineradio.radiohost.de/remix"},
+        {"Radio Scoop - Remix", "https://scoopremix.ice.infomaniak.ch/radioscoop-remix-64.aac"},
+        {"Mashup FM", "https://stream.laut.fm/mashupfm"},
+        {"Radio Scoop - Rap", "https://scooprap.ice.infomaniak.ch/radioscoop-rap-64.aac"},
+        {"Cool FM - da Dance", "https://mediagw.e-tiger.net/stream/dds"},
+        {"Radio Scoop - PowerDance", "https://scooppowerdance.ice.infomaniak.ch/radioscoop-powerdance-64.aac"}
     };
 
     try {

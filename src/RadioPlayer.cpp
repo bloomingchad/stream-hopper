@@ -13,7 +13,9 @@
 #include <ncurses.h>
 
 #define FADE_TIME_MS 900
-#define SMALL_MODE_TOTAL_TIME_SECONDS 720
+// *** THIS IS THE CHANGE ***
+// Set to 1125 for a ~45s duration per station (1125 / 25 stations = 45s)
+#define SMALL_MODE_TOTAL_TIME_SECONDS 1125
 
 using nlohmann::json;
 
@@ -68,7 +70,6 @@ void RadioPlayer::run() {
 
     while (!m_quit_flag) {
         if (needs_redraw) {
-            // *** THIS IS THE CHANGE ***
             m_ui->draw(m_stations, m_active_station_idx, *m_song_history, m_active_panel, m_history_scroll_offset, 
                        m_small_mode_active, get_remaining_seconds_for_current_station(), m_station_switch_duration);
             needs_redraw = false;
@@ -273,14 +274,11 @@ RadioStream* RadioPlayer::find_station_by_id(int station_id) {
 }
 
 void RadioPlayer::on_title_changed(RadioStream& station, const std::string& new_title) {
-    // Basic validation
     if (new_title.empty() || new_title == station.getCurrentTitle() || new_title == "N/A" || new_title == "Initializing...") {
         return;
     }
 
-    // Heuristic: Ignore titles that are likely stream URLs or placeholder text
     if (contains_ci(station.getURL(), new_title) || contains_ci(station.getName(), new_title)) {
-        // If it's just placeholder, we only update the UI but don't log it
         if (new_title != station.getCurrentTitle()) {
              station.setCurrentTitle(new_title);
         }
@@ -305,12 +303,12 @@ void RadioPlayer::on_title_changed(RadioStream& station, const std::string& new_
         (*m_song_history)[station.getName()].push_back(history_entry_for_file);
     }
     save_history_to_disk();
-    station.setCurrentTitle(new_title); // UI shows the clean title
+    station.setCurrentTitle(new_title);
 }
 
 void RadioPlayer::on_stream_eof(RadioStream& station) {
     station.setCurrentTitle("Stream Error - Reconnecting...");
-    station.setHasLoggedFirstSong(false); // Reset for the new stream session
+    station.setHasLoggedFirstSong(false);
     const char* cmd[] = {"loadfile", station.getURL().c_str(), "replace", nullptr};
     check_mpv_error(mpv_command_async(station.getMpvHandle(), 0, cmd), "reconnect on eof");
 }
