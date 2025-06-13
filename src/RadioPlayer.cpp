@@ -69,8 +69,8 @@ void RadioPlayer::run() {
     while (!m_quit_flag) {
         if (needs_redraw) {
             // *** THIS IS THE CHANGE ***
-            // Pass m_small_mode_active to the draw function
-            m_ui->draw(m_stations, m_active_station_idx, *m_song_history, m_active_panel, m_history_scroll_offset, m_small_mode_active);
+            m_ui->draw(m_stations, m_active_station_idx, *m_song_history, m_active_panel, m_history_scroll_offset, 
+                       m_small_mode_active, get_remaining_seconds_for_current_station(), m_station_switch_duration);
             needs_redraw = false;
         }
         
