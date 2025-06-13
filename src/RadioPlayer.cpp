@@ -119,8 +119,12 @@ void RadioPlayer::handle_input(int ch) {
     switch (ch) {
         case KEY_UP:
             if (m_active_panel == ActivePanel::STATIONS) {
+                // Loop to bottom if at top
                 if (m_active_station_idx > 0) {
                     switch_station(m_active_station_idx - 1);
+                } else {
+                    // Wrap to last station
+                    switch_station(static_cast<int>(m_stations.size()) - 1);
                 }
             } else if (m_active_panel == ActivePanel::HISTORY) {
                 if (m_history_scroll_offset > 0) {
@@ -131,8 +135,12 @@ void RadioPlayer::handle_input(int ch) {
 
         case KEY_DOWN:
             if (m_active_panel == ActivePanel::STATIONS) {
+                // Loop to top if at bottom
                 if (m_active_station_idx < static_cast<int>(m_stations.size()) - 1) {
                     switch_station(m_active_station_idx + 1);
+                } else {
+                    // Wrap to first station
+                    switch_station(0);
                 }
             } else if (m_active_panel == ActivePanel::HISTORY) {
                 const auto& current_station_name = m_stations[m_active_station_idx].getName();
