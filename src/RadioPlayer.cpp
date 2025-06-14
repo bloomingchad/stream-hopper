@@ -15,15 +15,16 @@
 
 #define FADE_TIME_MS 900
 #define SMALL_MODE_TOTAL_TIME_SECONDS 1125
-#define DISCOVERY_MODE_REFRESH_MS 1000 // Refresh rate for discovery mode
-#define NORMAL_MODE_REFRESH_MS 100    // Refresh rate for normal navigation
-#define COPY_MODE_TIMEOUT_SECONDS 5   // Timeout for copy mode
+#define DISCOVERY_MODE_REFRESH_MS 1000
+#define NORMAL_MODE_REFRESH_MS 100
+#define COPY_MODE_TIMEOUT_SECONDS 10
+#define FORGOTTEN_MUTE_SECONDS 600    // 10 MINUTES
+#define COPY_MODE_REFRESH_MS 100
 
 const std::string FAVORITES_FILENAME = "radio_favorites.json";
 
 using nlohmann::json;
 
-// Helper function to check if a string contains another string, case-insensitively
 bool contains_ci(const std::string& haystack, const std::string& needle) {
     if (needle.empty()) return true;
     auto it = std::search(haystack.begin(), haystack.end(),
@@ -44,7 +45,7 @@ RadioPlayer::RadioPlayer(std::vector<std::pair<std::string, std::string>> statio
       m_song_history(std::make_unique<json>(json::object())),
       m_small_mode_start_time(std::chrono::steady_clock::now()),
       m_station_switch_duration(0),
-      m_copy_mode_active(false) // <-- INITIALIZE NEW MEMBER
+      m_copy_mode_active(false)
 {
     if (station_data.empty()) {
         throw std::runtime_error("No radio stations provided.");
@@ -68,6 +69,22 @@ RadioPlayer::~RadioPlayer() {
     if (m_mpv_event_thread.joinable()) {
         m_mpv_event_thread.join();
     }
+    
+    if (!m_stations.empty()) {
+        const RadioStream& active_station = m_stations[m_active_station_idx];
+        auto mute_start_time = active_station.getMuteStartTime();
+        if (active_station.isMuted() && mute_start_time.has_value()) {
+            auto now = std::chrono::steady_clock::now();
+            auto mute_duration = std::chrono::duration_cast<std::chrono::seconds>(now - mute_start_time.value());
+            if (mute_duration.count() >= FORGOTTEN_MUTE_SECONDS) {
+                if (m_ui) m_ui.reset();
+                long minutes = mute_duration.count() / 60;
+                std::string unit = (minutes == 1) ? " minute" : " minutes";
+                std::cout << "hey you forgot about me for " << minutes << unit << " 😤" << std::endl;
+            }
+        }
+    }
+    
     save_history_to_disk();
     save_favorites_to_disk();
 }
@@ -76,53 +93,42 @@ void RadioPlayer::run() {
     m_mpv_event_thread = std::thread(&RadioPlayer::mpv_event_loop, this);
 
     while (!m_quit_flag) {
-        bool needs_draw_for_state_change = false;
-
-        // --- Handle Input ---
-        int ch = m_ui->getInput();
-        if (ch != ERR) {
-            bool was_copy_mode = m_copy_mode_active.load();
-            handle_input(ch); // Can change state, including m_copy_mode_active
-
-            if (!was_copy_mode && m_copy_mode_active) {
-                // We just entered copy mode. Draw the indicator screen ONCE.
-                m_ui->draw(m_stations, m_active_station_idx, *m_song_history, m_active_panel, m_history_scroll_offset, 
-                           m_small_mode_active, get_remaining_seconds_for_current_station(), m_station_switch_duration,
-                           true);
-            } else {
-                // Any other keypress means we need a redraw.
-                needs_draw_for_state_change = true;
-            }
-        }
-
-        // --- Handle Time-based State Changes ---
         if (m_copy_mode_active) {
-            // Check for timeout
             auto now = std::chrono::steady_clock::now();
             auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_copy_mode_start_time);
             if (elapsed.count() >= COPY_MODE_TIMEOUT_SECONDS) {
                 m_copy_mode_active = false;
-                needs_draw_for_state_change = true; // Exited via timeout, redraw
+                m_needs_redraw = true;
+                m_ui->setInputTimeout(m_small_mode_active ? DISCOVERY_MODE_REFRESH_MS : NORMAL_MODE_REFRESH_MS);
             }
         } else {
-            // Not in copy mode, so do normal background state updates
             if (update_state()) {
                 m_needs_redraw = true;
             }
+
+            if (!m_small_mode_active && !m_stations.empty() && m_stations[m_active_station_idx].isMuted()) {
+                auto mute_start = m_stations[m_active_station_idx].getMuteStartTime();
+                if (mute_start.has_value()) {
+                    auto now = std::chrono::steady_clock::now();
+                    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - mute_start.value());
+                    if (elapsed.count() >= FORGOTTEN_MUTE_SECONDS) {
+                        m_quit_flag = true;
+                    }
+                }
+            }
         }
 
-        // --- Drawing Logic ---
-        // This is the main gatekeeper. We only draw if a state change requires it
-        // OR the background MPV thread requires it.
-        if (needs_draw_for_state_change || m_needs_redraw.exchange(false)) {
-            // THE CRITICAL FIX: If copy mode is active, we ABORT the draw.
-            // This prevents background events (like a song title changing) from
-            // breaking the user's mouse selection.
+        if (m_needs_redraw.exchange(false)) {
             if (!m_copy_mode_active) {
                 m_ui->draw(m_stations, m_active_station_idx, *m_song_history, m_active_panel, m_history_scroll_offset, 
                            m_small_mode_active, get_remaining_seconds_for_current_station(), m_station_switch_duration,
                            false);
             }
+        }
+
+        int ch = m_ui->getInput();
+        if (ch != ERR) {
+            handle_input(ch);
         }
     }
 }
@@ -156,8 +162,10 @@ void RadioPlayer::on_key_enter() {
 
 void RadioPlayer::handle_input(int ch) {
     if (m_copy_mode_active) {
-        m_copy_mode_active = false; // Any key press exits copy mode
-        return; // Consume the key press
+        m_copy_mode_active = false;
+        m_needs_redraw = true;
+        m_ui->setInputTimeout(m_small_mode_active ? DISCOVERY_MODE_REFRESH_MS : NORMAL_MODE_REFRESH_MS);
+        return;
     }
 
     switch (ch) {
@@ -217,13 +225,22 @@ void RadioPlayer::handle_input(int ch) {
             break;
 
         case 'c': case 'C':
-            m_copy_mode_active = true;
-            m_copy_mode_start_time = std::chrono::steady_clock::now();
+            if (!m_copy_mode_active) {
+                m_copy_mode_active = true;
+                m_copy_mode_start_time = std::chrono::steady_clock::now();
+                m_ui->setInputTimeout(COPY_MODE_REFRESH_MS);
+                m_ui->draw(m_stations, m_active_station_idx, *m_song_history, m_active_panel, m_history_scroll_offset, 
+                           m_small_mode_active, get_remaining_seconds_for_current_station(), m_station_switch_duration,
+                           true);
+            }
             break;
 
         case 'q': case 'Q':
             m_quit_flag = true;
             break;
+    }
+    if (ch != 'c' && ch != 'C') {
+       m_needs_redraw = true;
     }
 }
 
@@ -280,10 +297,12 @@ void RadioPlayer::toggle_mute_station(int station_idx) {
     RadioStream& station = m_stations[station_idx];
     if (station.isMuted()) {
         station.setMuted(false);
+        station.resetMuteStartTime();
         fade_audio(station, station.getCurrentVolume(), station.getPreMuteVolume(), FADE_TIME_MS / 2);
     } else {
         station.setPreMuteVolume(station.getCurrentVolume());
         station.setMuted(true);
+        station.setMuteStartTime();
         fade_audio(station, station.getCurrentVolume(), 0.0, FADE_TIME_MS / 2);
     }
 }

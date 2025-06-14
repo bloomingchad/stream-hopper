@@ -5,6 +5,8 @@
 #include <string>
 #include <atomic>
 #include <mutex>
+#include <chrono>
+#include <optional>
 #include <mpv/client.h>
 
 class RadioStream {
@@ -48,8 +50,14 @@ public:
     bool hasLoggedFirstSong() const;
     void setHasLoggedFirstSong(bool has_logged);
 
-    bool isBuffering() const; // <-- ADDED
-    void setBuffering(bool buffering); // <-- ADDED
+    bool isBuffering() const;
+    void setBuffering(bool buffering);
+
+    // --- ADDED FOR MUTE TRACKING ---
+    std::optional<std::chrono::steady_clock::time_point> getMuteStartTime() const;
+    void setMuteStartTime();
+    void resetMuteStartTime();
+    // --- END ADDED ---
 
 private:
     int m_id;
@@ -67,7 +75,12 @@ private:
     std::atomic<double> m_target_volume;
     std::atomic<bool> m_is_favorite;
     std::atomic<bool> m_has_logged_first_song;
-    std::atomic<bool> m_is_buffering; // <-- ADDED
+    std::atomic<bool> m_is_buffering;
+    
+    // --- ADDED FOR MUTE TRACKING ---
+    std::optional<std::chrono::steady_clock::time_point> m_mute_start_time;
+    mutable std::mutex m_mute_time_mutex;
+    // --- END ADDED ---
 };
 
 #endif // RADIOSTREAM_H

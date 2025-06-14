@@ -3,7 +3,7 @@
 
 # Compiler and flags
 CXX := g++
-CXXFLAGS := -std=c++14 -g -Wall -Wextra -pthread
+CXXFLAGS := -std=c++17 -g -Wall -Wextra -pthread
 
 # --- Directories ---
 TARGET_NAME := stream-hopper
