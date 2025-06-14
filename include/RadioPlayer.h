@@ -42,6 +42,8 @@ private:
 
     void load_history_from_disk();
     void save_history_to_disk();
+    void load_favorites_from_disk(); // <-- ADDED
+    void save_favorites_to_disk(); // <-- ADDED
     
     void toggle_small_mode();
     bool should_switch_station();

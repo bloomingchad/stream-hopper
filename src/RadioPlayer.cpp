@@ -11,11 +11,14 @@
 #include <iomanip>
 #include <iostream>
 #include <ncurses.h>
+#include <unordered_set> // <-- ADDED
 
 #define FADE_TIME_MS 900
 #define SMALL_MODE_TOTAL_TIME_SECONDS 1125
 #define DISCOVERY_MODE_REFRESH_MS 1000 // Refresh rate for discovery mode
 #define NORMAL_MODE_REFRESH_MS 100    // Refresh rate for normal navigation
+
+const std::string FAVORITES_FILENAME = "radio_favorites.json"; // <-- ADDED
 
 using nlohmann::json;
 
@@ -51,6 +54,7 @@ RadioPlayer::RadioPlayer(std::vector<std::pair<std::string, std::string>> statio
         m_station_switch_duration = SMALL_MODE_TOTAL_TIME_SECONDS / static_cast<int>(m_stations.size());
     }
     load_history_from_disk();
+    load_favorites_from_disk(); // <-- ADDED
     for (int i = 0; i < static_cast<int>(m_stations.size()); ++i) {
         double initial_volume = (i == m_active_station_idx) ? 100.0 : 0.0;
         m_stations[i].initialize(initial_volume);
@@ -63,6 +67,7 @@ RadioPlayer::~RadioPlayer() {
         m_mpv_event_thread.join();
     }
     save_history_to_disk();
+    save_favorites_to_disk(); // <-- ADDED
 }
 
 void RadioPlayer::run() {
@@ -172,6 +177,7 @@ void RadioPlayer::handle_input(int ch) {
         case 'f': case 'F':
             if (!m_stations.empty()) {
                 m_stations[m_active_station_idx].toggleFavorite();
+                save_favorites_to_disk(); // <-- ADDED
             }
             break;
 
@@ -358,6 +364,55 @@ void RadioPlayer::handle_mpv_event(mpv_event* event) {
         m_needs_redraw = true;
     }
 }
+
+// *** ADDED NEW METHODS IMPLEMENTATION ***
+void RadioPlayer::load_favorites_from_disk() {
+    std::ifstream i(FAVORITES_FILENAME);
+    if (!i.is_open()) {
+        return; // No favorites file yet, that's okay.
+    }
+    
+    json fav_names;
+    try {
+        i >> fav_names;
+        if (!fav_names.is_array()) {
+            return; // Malformed file, ignore.
+        }
+    } catch (const json::parse_error& e) {
+        return; // Malformed file, ignore.
+    }
+
+    // Create a set for quick lookups
+    std::unordered_set<std::string> favorite_set;
+    for (const auto& name_json : fav_names) {
+        if (name_json.is_string()) {
+            favorite_set.insert(name_json.get<std::string>());
+        }
+    }
+    
+    // Apply favorites. Since all stations start as non-favorite,
+    // we can just toggle the ones we find in our list.
+    for (auto& station : m_stations) {
+        if (favorite_set.count(station.getName())) {
+            station.toggleFavorite();
+        }
+    }
+}
+
+void RadioPlayer::save_favorites_to_disk() {
+    json fav_names = json::array();
+    for (const auto& station : m_stations) {
+        if (station.isFavorite()) {
+            fav_names.push_back(station.getName());
+        }
+    }
+
+    std::ofstream o(FAVORITES_FILENAME);
+    if (o.is_open()) {
+        o << std::setw(4) << fav_names << std::endl;
+    }
+}
+
 
 void RadioPlayer::load_history_from_disk() {
     std::ifstream i("radio_history.json");

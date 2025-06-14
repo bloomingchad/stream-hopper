@@ -32,7 +32,7 @@ int main() {
         //{"Absolut.de Hot", "https://edge22.live-sm.absolutradio.de/absolut-hot"},
 
         {"Sunshine Live - EDM", "http://stream.sunshine-live.de/edm/mp3-192/stream.sunshine-live.de/"},
-        {"Sunshine Live - Amsterdam Club", "https://stream.sunshine-live.de/ade18club/mp3-128"},
+        //{"Sunshine Live - Amsterdam Club", "https://stream.sunshine-live.de/ade18club/mp3-128"},
         {"Sunshine Live - Charts", "http://stream.sunshine-live.de/sp6/mp3-128"},
         //{"Sunshine Live - EuroDance", "https://sunsl.streamabc.net/sunsl-eurodance-mp3-192-9832422"},
         //{"Sunshine Live - Summer Beats", "http://stream.sunshine-live.de/sp2/aac-64"},
