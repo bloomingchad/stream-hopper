@@ -38,6 +38,7 @@ private:
 
     void switch_station(int new_idx);
     void toggle_mute_station(int station_idx);
+    void toggle_audio_ducking(int station_idx); // <-- THE MISSING DECLARATION
     void fade_audio(RadioStream& station, double from_vol, double to_vol, int duration_ms);
 
     void load_history_from_disk();
@@ -70,7 +71,6 @@ private:
     std::chrono::steady_clock::time_point m_small_mode_start_time;
     int m_station_switch_duration;
 
-    // --- ADDED FOR COPY MODE ---
     std::atomic<bool> m_copy_mode_active;
     std::chrono::steady_clock::time_point m_copy_mode_start_time;
 };

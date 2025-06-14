@@ -6,7 +6,8 @@
 
 RadioStream::RadioStream(int id, std::string name, std::string url)
     : m_id(id), m_name(std::move(name)), m_url(std::move(url)), m_mpv(nullptr),
-      m_current_title("Initializing..."), m_is_muted(false), m_current_volume(0.0),
+      m_current_title("Initializing..."), m_is_muted(false), m_is_ducked(false), // <-- INITIALIZE
+      m_current_volume(0.0),
       m_pre_mute_volume(100.0), m_is_fading(false), m_target_volume(0.0), m_is_favorite(false),
       m_has_logged_first_song(false), m_is_buffering(false), 
       m_mute_start_time(std::nullopt) {}
@@ -18,6 +19,7 @@ RadioStream::RadioStream(RadioStream &&other) noexcept
       m_url(std::move(other.m_url)), m_mpv(other.m_mpv),
       m_current_title(other.getCurrentTitle()),
       m_is_muted(other.m_is_muted.load()),
+      m_is_ducked(other.m_is_ducked.load()), // <-- ADDED
       m_current_volume(other.m_current_volume.load()),
       m_pre_mute_volume(other.m_pre_mute_volume.load()),
       m_is_fading(other.m_is_fading.load()),
@@ -39,6 +41,7 @@ RadioStream &RadioStream::operator=(RadioStream &&other) noexcept {
     m_mpv = other.m_mpv;
     setCurrentTitle(other.getCurrentTitle());
     m_is_muted.store(other.m_is_muted.load());
+    m_is_ducked.store(other.m_is_ducked.load()); // <-- ADDED
     m_current_volume.store(other.m_current_volume.load());
     m_pre_mute_volume.store(other.m_pre_mute_volume.load());
     m_is_fading.store(other.m_is_fading.load());
@@ -112,6 +115,12 @@ void RadioStream::setCurrentTitle(const std::string &title) {
 
 bool RadioStream::isMuted() const { return m_is_muted; }
 void RadioStream::setMuted(bool muted) { m_is_muted = muted; }
+
+// --- ADDED FOR DUCKING ---
+bool RadioStream::isDucked() const { return m_is_ducked; }
+void RadioStream::setDucked(bool ducked) { m_is_ducked = ducked; }
+// --- END ADDED ---
+
 double RadioStream::getCurrentVolume() const { return m_current_volume; }
 void RadioStream::setCurrentVolume(double vol) { m_current_volume = vol; }
 double RadioStream::getPreMuteVolume() const { return m_pre_mute_volume; }
@@ -129,7 +138,6 @@ void RadioStream::setHasLoggedFirstSong(bool has_logged) { m_has_logged_first_so
 bool RadioStream::isBuffering() const { return m_is_buffering; }
 void RadioStream::setBuffering(bool buffering) { m_is_buffering = buffering; }
 
-// --- ADDED FOR MUTE TRACKING ---
 std::optional<std::chrono::steady_clock::time_point> RadioStream::getMuteStartTime() const {
     std::lock_guard<std::mutex> lock(m_mute_time_mutex);
     return m_mute_start_time;
@@ -144,4 +152,3 @@ void RadioStream::resetMuteStartTime() {
     std::lock_guard<std::mutex> lock(m_mute_time_mutex);
     m_mute_start_time = std::nullopt;
 }
-// --- END ADDED ---

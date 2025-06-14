@@ -18,8 +18,9 @@
 #define DISCOVERY_MODE_REFRESH_MS 1000
 #define NORMAL_MODE_REFRESH_MS 100
 #define COPY_MODE_TIMEOUT_SECONDS 10
-#define FORGOTTEN_MUTE_SECONDS 600    // 10 MINUTES
+#define FORGOTTEN_MUTE_SECONDS 600
 #define COPY_MODE_REFRESH_MS 100
+#define DUCK_VOLUME 40.0 // <-- ADDED DUCK VOLUME
 
 const std::string FAVORITES_FILENAME = "radio_favorites.json";
 
@@ -224,6 +225,14 @@ void RadioPlayer::handle_input(int ch) {
             }
             break;
 
+        // --- ADDED DUCKING KEY ---
+        case 'd': case 'D':
+            if (!m_stations.empty()) {
+                toggle_audio_ducking(m_active_station_idx);
+            }
+            break;
+        // --- END ADDED ---
+
         case 'c': case 'C':
             if (!m_copy_mode_active) {
                 m_copy_mode_active = true;
@@ -295,6 +304,10 @@ void RadioPlayer::switch_station(int new_idx) {
 void RadioPlayer::toggle_mute_station(int station_idx) {
     if (station_idx < 0 || station_idx >= (int)m_stations.size()) return;
     RadioStream& station = m_stations[station_idx];
+
+    // Can't mute if already ducked. Must un-duck first.
+    if (station.isDucked()) return;
+
     if (station.isMuted()) {
         station.setMuted(false);
         station.resetMuteStartTime();
@@ -306,6 +319,25 @@ void RadioPlayer::toggle_mute_station(int station_idx) {
         fade_audio(station, station.getCurrentVolume(), 0.0, FADE_TIME_MS / 2);
     }
 }
+
+// --- ADDED DUCKING FUNCTION ---
+void RadioPlayer::toggle_audio_ducking(int station_idx) {
+    if (station_idx < 0 || station_idx >= (int)m_stations.size()) return;
+    RadioStream& station = m_stations[station_idx];
+
+    // Can't duck if already muted. Must unmute first.
+    if (station.isMuted()) return;
+
+    if (station.isDucked()) {
+        station.setDucked(false);
+        fade_audio(station, station.getCurrentVolume(), station.getPreMuteVolume(), FADE_TIME_MS);
+    } else {
+        station.setPreMuteVolume(station.getCurrentVolume());
+        station.setDucked(true);
+        fade_audio(station, station.getCurrentVolume(), DUCK_VOLUME, FADE_TIME_MS);
+    }
+}
+// --- END ADDED ---
 
 void RadioPlayer::fade_audio(RadioStream& station, double from_vol, double to_vol, int duration_ms) {
     station.setFading(true);

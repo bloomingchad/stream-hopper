@@ -64,13 +64,13 @@ UIManager::UIManager() : m_station_scroll_offset(0) {
     noecho();
     curs_set(0);
     keypad(stdscr, TRUE);
-    timeout(DEFAULT_INPUT_TIMEOUT); // Use the defined default
+    timeout(DEFAULT_INPUT_TIMEOUT);
     start_color();
     use_default_colors();
     init_pair(1, COLOR_YELLOW, -1);
     init_pair(2, COLOR_GREEN, -1);
     init_pair(3, COLOR_CYAN, -1);
-    init_pair(4, COLOR_MAGENTA, -1); // Color for Copy Mode
+    init_pair(4, COLOR_MAGENTA, -1);
 }
 
 UIManager::~UIManager() {
@@ -83,7 +83,6 @@ void UIManager::setInputTimeout(int milliseconds) {
     timeout(milliseconds);
 }
 
-// --- UPDATED draw IMPLEMENTATION ---
 void UIManager::draw(const std::vector<RadioStream>& stations, int active_station_idx, 
                      const nlohmann::json& history, ActivePanel active_panel, int scroll_offset, bool is_small_mode,
                      int remaining_seconds, int total_duration, bool is_copy_mode) {
@@ -126,7 +125,6 @@ void UIManager::draw_header_bar(int width, double current_volume) {
     attroff(A_REVERSE);
 }
 
-// --- UPDATED draw_footer_bar IMPLEMENTATION ---
 void UIManager::draw_footer_bar(int y, int width, bool is_compact, bool is_small_mode, bool is_copy_mode) {
     std::string footer_text;
     if (is_copy_mode) {
@@ -134,15 +132,14 @@ void UIManager::draw_footer_bar(int y, int width, bool is_compact, bool is_small
     } else if (is_small_mode) {
         footer_text = " [S] Exit Discovery   [C] Copy Mode   [Q] Quit ";
     } else if (is_compact) {
-        footer_text = " [Nav]   [Tab] Panel   [F] Favorite   [C] Copy   [Q] Quit ";
+        footer_text = " [Nav] [Tab] Panel [F] Fav [D] Duck [C] Copy [Q] Quit ";
     } else {
-        footer_text = " [↑↓] Navigate   [↵] Mute   [⇥] Panel   [F] Fav   [C] Copy   [Q] Quit ";
+        footer_text = " [↑↓] Navigate [↵] Mute [D] Duck [⇥] Panel [F] Fav [C] Copy [Q] Quit ";
     }
     
     attron(A_REVERSE);
     mvprintw(y, 0, "%*s", width, "");
 
-    // --- ADDED: Special color for Copy Mode ---
     if (is_copy_mode) {
         attron(COLOR_PAIR(4));
         attron(A_BOLD);
@@ -161,7 +158,6 @@ void UIManager::draw_footer_bar(int y, int width, bool is_compact, bool is_small
     attroff(A_REVERSE);
 }
 
-// --- UPDATED draw_compact_mode IMPLEMENTATION ---
 void UIManager::draw_compact_mode(int width, int height, const std::vector<RadioStream>& stations, int active_idx,
                                   const nlohmann::json& history, ActivePanel active_panel, int scroll_offset, bool is_small_mode,
                                   int remaining_seconds, int total_duration, bool is_copy_mode) {
@@ -207,6 +203,7 @@ void UIManager::draw_compact_mode(int width, int height, const std::vector<Radio
         std::string status_icon = "  ";
         if(is_active) {
             if (station.isBuffering()) status_icon = "🤔 ";
+            else if (station.isDucked()) status_icon = "🎧 "; // <-- ADDED
             else if (station.isMuted()) status_icon = "🔇 ";
             else status_icon = "▶️ ";
         }
@@ -226,7 +223,6 @@ void UIManager::draw_compact_mode(int width, int height, const std::vector<Radio
     }
 }
 
-// --- UPDATED draw_full_mode IMPLEMENTATION ---
 void UIManager::draw_full_mode(int width, int height, const std::vector<RadioStream>& stations, int active_station_idx, 
                                const nlohmann::json& history, ActivePanel active_panel, int scroll_offset, bool is_small_mode,
                                int remaining_seconds, int total_duration, bool is_copy_mode) {
@@ -272,6 +268,8 @@ void UIManager::draw_stations_panel(int y, int x, int w, int h, const std::vecto
         std::string status_icon;
         if (station.isBuffering()) {
             status_icon = "🤔 ";
+        } else if (station.isDucked()) { // <-- ADDED
+            status_icon = "🎧 ";
         } else if (station.isMuted()) {
             status_icon = "🔇 ";
         } else if (station.getCurrentVolume() > 0) {
@@ -327,7 +325,7 @@ void UIManager::draw_now_playing_panel(int y, int x, int w, int h, const RadioSt
     } else {
         int bar_width = inner_w - 12; 
         if (bar_width > 0) {
-            double vol_percent = station.isMuted() ? 0.0 : station.getCurrentVolume() / 100.0;
+            double vol_percent = (station.isMuted() ? 0.0 : station.getCurrentVolume()) / 100.0;
             int filled_width = static_cast<int>(vol_percent * bar_width);
             
             mvwprintw(stdscr, y + 1, x + 3, "🔊 [");

@@ -32,6 +32,11 @@ public:
     bool isMuted() const;
     void setMuted(bool muted);
 
+    // --- ADDED FOR DUCKING ---
+    bool isDucked() const;
+    void setDucked(bool ducked);
+    // --- END ADDED ---
+
     double getCurrentVolume() const;
     void setCurrentVolume(double vol);
 
@@ -53,11 +58,9 @@ public:
     bool isBuffering() const;
     void setBuffering(bool buffering);
 
-    // --- ADDED FOR MUTE TRACKING ---
     std::optional<std::chrono::steady_clock::time_point> getMuteStartTime() const;
     void setMuteStartTime();
     void resetMuteStartTime();
-    // --- END ADDED ---
 
 private:
     int m_id;
@@ -69,6 +72,7 @@ private:
     std::string m_current_title;
 
     std::atomic<bool> m_is_muted;
+    std::atomic<bool> m_is_ducked; // <-- ADDED
     std::atomic<double> m_current_volume;
     std::atomic<double> m_pre_mute_volume;
     std::atomic<bool> m_is_fading;
@@ -77,10 +81,8 @@ private:
     std::atomic<bool> m_has_logged_first_song;
     std::atomic<bool> m_is_buffering;
     
-    // --- ADDED FOR MUTE TRACKING ---
     std::optional<std::chrono::steady_clock::time_point> m_mute_start_time;
     mutable std::mutex m_mute_time_mutex;
-    // --- END ADDED ---
 };
 
 #endif // RADIOSTREAM_H
