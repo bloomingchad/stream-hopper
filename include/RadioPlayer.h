@@ -8,7 +8,7 @@
 #include <thread>
 #include <chrono>
 #include <mutex>
-#include <atomic> // <-- ADDED for std::atomic
+#include <atomic>
 
 #include "RadioStream.h"
 #include "nlohmann/json.hpp"
@@ -42,8 +42,8 @@ private:
 
     void load_history_from_disk();
     void save_history_to_disk();
-    void load_favorites_from_disk(); // <-- ADDED
-    void save_favorites_to_disk(); // <-- ADDED
+    void load_favorites_from_disk();
+    void save_favorites_to_disk();
     
     void toggle_small_mode();
     bool should_switch_station();
@@ -56,7 +56,7 @@ private:
     std::vector<RadioStream> m_stations;
     int m_active_station_idx;
     std::atomic<bool> m_quit_flag;
-    std::atomic<bool> m_needs_redraw; // <-- ADDED for event-driven redraw
+    std::atomic<bool> m_needs_redraw;
 
     std::thread m_mpv_event_thread;
 
@@ -69,6 +69,10 @@ private:
 
     std::chrono::steady_clock::time_point m_small_mode_start_time;
     int m_station_switch_duration;
+
+    // --- ADDED FOR COPY MODE ---
+    std::atomic<bool> m_copy_mode_active;
+    std::chrono::steady_clock::time_point m_copy_mode_start_time;
 };
 
 #endif // RADIOPLAYER_H

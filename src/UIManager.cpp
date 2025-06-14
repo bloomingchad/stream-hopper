@@ -70,6 +70,7 @@ UIManager::UIManager() : m_station_scroll_offset(0) {
     init_pair(1, COLOR_YELLOW, -1);
     init_pair(2, COLOR_GREEN, -1);
     init_pair(3, COLOR_CYAN, -1);
+    init_pair(4, COLOR_MAGENTA, -1); // Color for Copy Mode
 }
 
 UIManager::~UIManager() {
@@ -82,9 +83,10 @@ void UIManager::setInputTimeout(int milliseconds) {
     timeout(milliseconds);
 }
 
+// --- UPDATED draw IMPLEMENTATION ---
 void UIManager::draw(const std::vector<RadioStream>& stations, int active_station_idx, 
                      const nlohmann::json& history, ActivePanel active_panel, int scroll_offset, bool is_small_mode,
-                     int remaining_seconds, int total_duration) {
+                     int remaining_seconds, int total_duration, bool is_copy_mode) {
     clear();
     int height, width;
     getmaxyx(stdscr, height, width);
@@ -98,11 +100,11 @@ void UIManager::draw(const std::vector<RadioStream>& stations, int active_statio
     draw_header_bar(width, display_vol);
 
     if (width < COMPACT_MODE_WIDTH) {
-        draw_compact_mode(width, height, stations, active_station_idx, history, active_panel, scroll_offset, is_small_mode, remaining_seconds, total_duration);
-        draw_footer_bar(height - 1, width, true, is_small_mode);
+        draw_compact_mode(width, height, stations, active_station_idx, history, active_panel, scroll_offset, is_small_mode, remaining_seconds, total_duration, is_copy_mode);
+        draw_footer_bar(height - 1, width, true, is_small_mode, is_copy_mode);
     } else {
-        draw_full_mode(width, height, stations, active_station_idx, history, active_panel, scroll_offset, is_small_mode, remaining_seconds, total_duration);
-        draw_footer_bar(height - 1, width, false, is_small_mode);
+        draw_full_mode(width, height, stations, active_station_idx, history, active_panel, scroll_offset, is_small_mode, remaining_seconds, total_duration, is_copy_mode);
+        draw_footer_bar(height - 1, width, false, is_small_mode, is_copy_mode);
     }
     
     refresh();
@@ -124,29 +126,45 @@ void UIManager::draw_header_bar(int width, double current_volume) {
     attroff(A_REVERSE);
 }
 
-void UIManager::draw_footer_bar(int y, int width, bool is_compact, bool is_small_mode) {
+// --- UPDATED draw_footer_bar IMPLEMENTATION ---
+void UIManager::draw_footer_bar(int y, int width, bool is_compact, bool is_small_mode, bool is_copy_mode) {
     std::string footer_text;
-    if (is_small_mode) {
-        footer_text = " [S] Exit Discovery Mode   [🚪] Quit ";
-    } else if(is_compact) {
-        footer_text = " [🧭] Navigate   [🔄] Switch Panel   [⭐] Favorite   [🚪] Quit ";
+    if (is_copy_mode) {
+        footer_text = " [COPY MODE] UI Paused. Press any key to resume... ";
+    } else if (is_small_mode) {
+        footer_text = " [S] Exit Discovery   [C] Copy Mode   [Q] Quit ";
+    } else if (is_compact) {
+        footer_text = " [Nav]   [Tab] Panel   [F] Favorite   [C] Copy   [Q] Quit ";
     } else {
-        footer_text = " [🧭] Navigate   [⏯️] Play/Mute   [🔄] Switch Panel   [⭐] Favorite   [🚪] Quit ";
+        footer_text = " [↑↓] Navigate   [↵] Mute   [⇥] Panel   [F] Fav   [C] Copy   [Q] Quit ";
     }
     
     attron(A_REVERSE);
     mvprintw(y, 0, "%*s", width, "");
+
+    // --- ADDED: Special color for Copy Mode ---
+    if (is_copy_mode) {
+        attron(COLOR_PAIR(4));
+        attron(A_BOLD);
+    }
+    
     if ((int)footer_text.length() < width) {
         mvprintw(y, (width - footer_text.length()) / 2, "%s", footer_text.c_str());
     } else {
-        mvprintw(y, 1, " [🚪] Quit ");
+        mvprintw(y, 1, "%s", truncate_string(footer_text, width - 2).c_str());
+    }
+    
+    if (is_copy_mode) {
+        attroff(A_BOLD);
+        attroff(COLOR_PAIR(4));
     }
     attroff(A_REVERSE);
 }
 
+// --- UPDATED draw_compact_mode IMPLEMENTATION ---
 void UIManager::draw_compact_mode(int width, int height, const std::vector<RadioStream>& stations, int active_idx,
                                   const nlohmann::json& history, ActivePanel active_panel, int scroll_offset, bool is_small_mode,
-                                  int remaining_seconds, int total_duration) {
+                                  int remaining_seconds, int total_duration, bool is_copy_mode) {
     if (stations.empty()) return;
     const RadioStream& active_station = stations[active_idx];
 
@@ -165,7 +183,7 @@ void UIManager::draw_compact_mode(int width, int height, const std::vector<Radio
 
     draw_now_playing_panel(2, 1, width - 2, now_playing_h, active_station, is_small_mode, remaining_seconds, total_duration);
 
-    draw_box(stations_y, 1, width - 2, stations_h, "STATIONS", active_panel == ActivePanel::STATIONS);
+    draw_box(stations_y, 1, width - 2, stations_h, "STATIONS", active_panel == ActivePanel::STATIONS && !is_copy_mode);
     
     int visible_items = stations_h > 2 ? stations_h - 2 : 0;
     if (active_idx < m_station_scroll_offset) {
@@ -182,11 +200,10 @@ void UIManager::draw_compact_mode(int width, int height, const std::vector<Radio
         const auto& station = stations[station_idx];
         bool is_active = (station_idx == active_idx);
         
-        if (is_active) {
+        if (is_active && !is_copy_mode) {
             attron(A_REVERSE);
         }
 
-        // *** THIS IS THE CHANGE ***
         std::string status_icon = "  ";
         if(is_active) {
             if (station.isBuffering()) status_icon = "🤔 ";
@@ -199,19 +216,20 @@ void UIManager::draw_compact_mode(int width, int height, const std::vector<Radio
         
         mvwprintw(stdscr, stations_y + 1 + i, 3, "%-*s", width - 5, truncate_string(line, width - 6).c_str());
 
-        if (is_active) {
+        if (is_active && !is_copy_mode) {
             attroff(A_REVERSE);
         }
     }
 
     if (history_h > 0) {
-        draw_history_panel(history_y, 1, width - 2, history_h, active_station, history, active_panel == ActivePanel::HISTORY, scroll_offset);
+        draw_history_panel(history_y, 1, width - 2, history_h, active_station, history, active_panel == ActivePanel::HISTORY && !is_copy_mode, scroll_offset);
     }
 }
 
+// --- UPDATED draw_full_mode IMPLEMENTATION ---
 void UIManager::draw_full_mode(int width, int height, const std::vector<RadioStream>& stations, int active_station_idx, 
                                const nlohmann::json& history, ActivePanel active_panel, int scroll_offset, bool is_small_mode,
-                               int remaining_seconds, int total_duration) {
+                               int remaining_seconds, int total_duration, bool is_copy_mode) {
     if (stations.empty()) return;
 
     int left_panel_w = std::max(35, width / 3);
@@ -219,12 +237,12 @@ void UIManager::draw_full_mode(int width, int height, const std::vector<RadioStr
     int top_right_h = is_small_mode ? 7 : 6;
     int bottom_right_h = height - top_right_h - 2;
 
-    draw_stations_panel(1, 0, left_panel_w, height - 2, stations, active_station_idx, active_panel == ActivePanel::STATIONS);
+    draw_stations_panel(1, 0, left_panel_w, height - 2, stations, active_station_idx, active_panel == ActivePanel::STATIONS && !is_copy_mode);
     const RadioStream& current_station = stations[active_station_idx];
     
     draw_now_playing_panel(1, left_panel_w, right_panel_w, top_right_h, current_station, is_small_mode, remaining_seconds, total_duration);
     
-    draw_history_panel(1 + top_right_h, left_panel_w, right_panel_w, bottom_right_h, current_station, history, active_panel == ActivePanel::HISTORY, scroll_offset);
+    draw_history_panel(1 + top_right_h, left_panel_w, right_panel_w, bottom_right_h, current_station, history, active_panel == ActivePanel::HISTORY && !is_copy_mode, scroll_offset);
 }
 
 void UIManager::draw_stations_panel(int y, int x, int w, int h, const std::vector<RadioStream>& stations, 
@@ -251,7 +269,6 @@ void UIManager::draw_stations_panel(int y, int x, int w, int h, const std::vecto
             attron(A_REVERSE);
         }
         
-        // *** THIS IS THE CHANGE ***
         std::string status_icon;
         if (station.isBuffering()) {
             status_icon = "🤔 ";
@@ -281,7 +298,6 @@ void UIManager::draw_now_playing_panel(int y, int x, int w, int h, const RadioSt
 
     int inner_w = w - 4;
     
-    // *** THIS IS THE CHANGE ***
     std::string title = station.isBuffering() ? "Buffering..." : station.getCurrentTitle();
     attron(A_BOLD);
     mvwprintw(stdscr, y + 2, x + 3, "%s", truncate_string(title, inner_w - 2).c_str());

@@ -15,24 +15,29 @@ public:
     UIManager();
     ~UIManager();
 
+    // --- UPDATED draw SIGNATURE ---
     void draw(const std::vector<RadioStream>& stations, int active_station_idx, 
               const nlohmann::json& history, ActivePanel active_panel, int scroll_offset, bool is_small_mode,
-              int remaining_seconds, int total_duration);
+              int remaining_seconds, int total_duration, bool is_copy_mode);
 
     int getInput();
-    void setInputTimeout(int milliseconds); // <-- The new method
+    void setInputTimeout(int milliseconds);
 
 private:
-    void draw_header_bar(int width, double current_volume);
-    void draw_footer_bar(int y, int width, bool is_compact, bool is_small_mode);
+    // --- UPDATED draw_footer_bar SIGNATURE ---
+    void draw_footer_bar(int y, int width, bool is_compact, bool is_small_mode, bool is_copy_mode);
 
+    // --- UPDATED draw_compact_mode SIGNATURE ---
     void draw_compact_mode(int width, int height, const std::vector<RadioStream>& stations, int active_idx,
                            const nlohmann::json& history, ActivePanel active_panel, int scroll_offset, bool is_small_mode,
-                           int remaining_seconds, int total_duration);
+                           int remaining_seconds, int total_duration, bool is_copy_mode);
     
+    // --- UPDATED draw_full_mode SIGNATURE ---
     void draw_full_mode(int width, int height, const std::vector<RadioStream>& stations, int active_station_idx, 
                         const nlohmann::json& history, ActivePanel active_panel, int scroll_offset, bool is_small_mode,
-                        int remaining_seconds, int total_duration);
+                        int remaining_seconds, int total_duration, bool is_copy_mode);
+
+    void draw_header_bar(int width, double current_volume);
     
     void draw_stations_panel(int y, int x, int w, int h, const std::vector<RadioStream>& stations, int active_station_idx, bool is_focused);
     

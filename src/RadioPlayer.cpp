@@ -11,14 +11,15 @@
 #include <iomanip>
 #include <iostream>
 #include <ncurses.h>
-#include <unordered_set> // <-- ADDED
+#include <unordered_set>
 
 #define FADE_TIME_MS 900
 #define SMALL_MODE_TOTAL_TIME_SECONDS 1125
 #define DISCOVERY_MODE_REFRESH_MS 1000 // Refresh rate for discovery mode
 #define NORMAL_MODE_REFRESH_MS 100    // Refresh rate for normal navigation
+#define COPY_MODE_TIMEOUT_SECONDS 5   // Timeout for copy mode
 
-const std::string FAVORITES_FILENAME = "radio_favorites.json"; // <-- ADDED
+const std::string FAVORITES_FILENAME = "radio_favorites.json";
 
 using nlohmann::json;
 
@@ -36,13 +37,14 @@ RadioPlayer::RadioPlayer(std::vector<std::pair<std::string, std::string>> statio
     : m_ui(std::make_unique<UIManager>()),
       m_active_station_idx(0),
       m_quit_flag(false),
-      m_needs_redraw(true), // Start with a redraw needed
+      m_needs_redraw(true),
       m_small_mode_active(false),
       m_active_panel(ActivePanel::STATIONS),
       m_history_scroll_offset(0),
       m_song_history(std::make_unique<json>(json::object())),
       m_small_mode_start_time(std::chrono::steady_clock::now()),
-      m_station_switch_duration(0)
+      m_station_switch_duration(0),
+      m_copy_mode_active(false) // <-- INITIALIZE NEW MEMBER
 {
     if (station_data.empty()) {
         throw std::runtime_error("No radio stations provided.");
@@ -54,7 +56,7 @@ RadioPlayer::RadioPlayer(std::vector<std::pair<std::string, std::string>> statio
         m_station_switch_duration = SMALL_MODE_TOTAL_TIME_SECONDS / static_cast<int>(m_stations.size());
     }
     load_history_from_disk();
-    load_favorites_from_disk(); // <-- ADDED
+    load_favorites_from_disk();
     for (int i = 0; i < static_cast<int>(m_stations.size()); ++i) {
         double initial_volume = (i == m_active_station_idx) ? 100.0 : 0.0;
         m_stations[i].initialize(initial_volume);
@@ -67,26 +69,60 @@ RadioPlayer::~RadioPlayer() {
         m_mpv_event_thread.join();
     }
     save_history_to_disk();
-    save_favorites_to_disk(); // <-- ADDED
+    save_favorites_to_disk();
 }
 
 void RadioPlayer::run() {
     m_mpv_event_thread = std::thread(&RadioPlayer::mpv_event_loop, this);
 
     while (!m_quit_flag) {
-        if (update_state()) {
-            m_needs_redraw = true;
-        }
+        bool needs_draw_for_state_change = false;
 
-        if (m_needs_redraw.exchange(false)) { // Atomically check and reset the flag
-            m_ui->draw(m_stations, m_active_station_idx, *m_song_history, m_active_panel, m_history_scroll_offset, 
-                       m_small_mode_active, get_remaining_seconds_for_current_station(), m_station_switch_duration);
-        }
-        
+        // --- Handle Input ---
         int ch = m_ui->getInput();
         if (ch != ERR) {
-            handle_input(ch);
-            m_needs_redraw = true; // Any user input triggers a redraw
+            bool was_copy_mode = m_copy_mode_active.load();
+            handle_input(ch); // Can change state, including m_copy_mode_active
+
+            if (!was_copy_mode && m_copy_mode_active) {
+                // We just entered copy mode. Draw the indicator screen ONCE.
+                m_ui->draw(m_stations, m_active_station_idx, *m_song_history, m_active_panel, m_history_scroll_offset, 
+                           m_small_mode_active, get_remaining_seconds_for_current_station(), m_station_switch_duration,
+                           true);
+            } else {
+                // Any other keypress means we need a redraw.
+                needs_draw_for_state_change = true;
+            }
+        }
+
+        // --- Handle Time-based State Changes ---
+        if (m_copy_mode_active) {
+            // Check for timeout
+            auto now = std::chrono::steady_clock::now();
+            auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_copy_mode_start_time);
+            if (elapsed.count() >= COPY_MODE_TIMEOUT_SECONDS) {
+                m_copy_mode_active = false;
+                needs_draw_for_state_change = true; // Exited via timeout, redraw
+            }
+        } else {
+            // Not in copy mode, so do normal background state updates
+            if (update_state()) {
+                m_needs_redraw = true;
+            }
+        }
+
+        // --- Drawing Logic ---
+        // This is the main gatekeeper. We only draw if a state change requires it
+        // OR the background MPV thread requires it.
+        if (needs_draw_for_state_change || m_needs_redraw.exchange(false)) {
+            // THE CRITICAL FIX: If copy mode is active, we ABORT the draw.
+            // This prevents background events (like a song title changing) from
+            // breaking the user's mouse selection.
+            if (!m_copy_mode_active) {
+                m_ui->draw(m_stations, m_active_station_idx, *m_song_history, m_active_panel, m_history_scroll_offset, 
+                           m_small_mode_active, get_remaining_seconds_for_current_station(), m_station_switch_duration,
+                           false);
+            }
         }
     }
 }
@@ -99,12 +135,10 @@ bool RadioPlayer::update_state() {
         return true;
     }
     
-    // In discovery mode, we need to redraw every second for the countdown
     if (m_small_mode_active) {
         return true;
     }
     
-    // If any station is fading, we need to keep redrawing to show the volume bar change
     for (const auto& station : m_stations) {
         if (station.isFading()) {
             return true;
@@ -121,14 +155,17 @@ void RadioPlayer::on_key_enter() {
 }
 
 void RadioPlayer::handle_input(int ch) {
+    if (m_copy_mode_active) {
+        m_copy_mode_active = false; // Any key press exits copy mode
+        return; // Consume the key press
+    }
+
     switch (ch) {
         case KEY_UP:
             if (m_active_panel == ActivePanel::STATIONS) {
-                // Loop to bottom if at top
                 if (m_active_station_idx > 0) {
                     switch_station(m_active_station_idx - 1);
                 } else {
-                    // Wrap to last station
                     switch_station(static_cast<int>(m_stations.size()) - 1);
                 }
             } else if (m_active_panel == ActivePanel::HISTORY) {
@@ -140,11 +177,9 @@ void RadioPlayer::handle_input(int ch) {
 
         case KEY_DOWN:
             if (m_active_panel == ActivePanel::STATIONS) {
-                // Loop to top if at bottom
                 if (m_active_station_idx < static_cast<int>(m_stations.size()) - 1) {
                     switch_station(m_active_station_idx + 1);
                 } else {
-                    // Wrap to first station
                     switch_station(0);
                 }
             } else if (m_active_panel == ActivePanel::HISTORY) {
@@ -177,8 +212,13 @@ void RadioPlayer::handle_input(int ch) {
         case 'f': case 'F':
             if (!m_stations.empty()) {
                 m_stations[m_active_station_idx].toggleFavorite();
-                save_favorites_to_disk(); // <-- ADDED
+                save_favorites_to_disk();
             }
+            break;
+
+        case 'c': case 'C':
+            m_copy_mode_active = true;
+            m_copy_mode_start_time = std::chrono::steady_clock::now();
             break;
 
         case 'q': case 'Q':
@@ -326,13 +366,13 @@ void RadioPlayer::on_title_changed(RadioStream& station, const std::string& new_
     }
     save_history_to_disk();
     station.setCurrentTitle(new_title);
-    m_needs_redraw = true; // A new title means we need to redraw
+    m_needs_redraw = true;
 }
 
 void RadioPlayer::on_stream_eof(RadioStream& station) {
     station.setCurrentTitle("Stream Error - Reconnecting...");
     station.setHasLoggedFirstSong(false);
-    m_needs_redraw = true; // The title changed
+    m_needs_redraw = true;
     const char* cmd[] = {"loadfile", station.getURL().c_str(), "replace", nullptr};
     check_mpv_error(mpv_command_async(station.getMpvHandle(), 0, cmd), "reconnect on eof");
 }
@@ -347,7 +387,6 @@ void RadioPlayer::handle_mpv_event(mpv_event* event) {
     if (strcmp(prop->name, "media-title") == 0 && prop->format == MPV_FORMAT_STRING) {
         char* title_cstr = *(char**)prop->data;
         on_title_changed(*station, title_cstr ? title_cstr : "N/A");
-        // on_title_changed handles its own redraw flag
     } else if (strcmp(prop->name, "eof-reached") == 0 && prop->format == MPV_FORMAT_FLAG) {
         if (*(int*)prop->data) {
             on_stream_eof(*station);
@@ -365,24 +404,22 @@ void RadioPlayer::handle_mpv_event(mpv_event* event) {
     }
 }
 
-// *** ADDED NEW METHODS IMPLEMENTATION ***
 void RadioPlayer::load_favorites_from_disk() {
     std::ifstream i(FAVORITES_FILENAME);
     if (!i.is_open()) {
-        return; // No favorites file yet, that's okay.
+        return;
     }
     
     json fav_names;
     try {
         i >> fav_names;
         if (!fav_names.is_array()) {
-            return; // Malformed file, ignore.
+            return;
         }
     } catch (const json::parse_error& e) {
-        return; // Malformed file, ignore.
+        return;
     }
 
-    // Create a set for quick lookups
     std::unordered_set<std::string> favorite_set;
     for (const auto& name_json : fav_names) {
         if (name_json.is_string()) {
@@ -390,8 +427,6 @@ void RadioPlayer::load_favorites_from_disk() {
         }
     }
     
-    // Apply favorites. Since all stations start as non-favorite,
-    // we can just toggle the ones we find in our list.
     for (auto& station : m_stations) {
         if (favorite_set.count(station.getName())) {
             station.toggleFavorite();
