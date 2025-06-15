@@ -39,10 +39,10 @@ std::string format_history_timestamp(const std::string& ts_str) {
     tm_now.tm_hour = 0; tm_now.tm_min = 0; tm_now.tm_sec = 0;
     auto today_start = std::chrono::system_clock::from_time_t(std::mktime(&tm_now));
 
+    std::stringstream time_ss;
     if (entry_time >= today_start) {
-        char buf[10];
-        std::strftime(buf, sizeof(buf), "%H:%M", &tm);
-        return std::string(buf);
+        time_ss << std::put_time(&tm, "%H:%M");
+        return time_ss.str();
     }
 
     auto yesterday_start = today_start - std::chrono::hours(24);
@@ -50,9 +50,8 @@ std::string format_history_timestamp(const std::string& ts_str) {
         return "Yesterday";
     }
 
-    char buf[20];
-    std::strftime(buf, sizeof(buf), "%b %d", &tm);
-    return std::string(buf);
+    time_ss << std::put_time(&tm, "%b %d");
+    return time_ss.str();
 }
 
 
@@ -116,9 +115,9 @@ int UIManager::getInput() {
 void UIManager::draw_header_bar(int width, double current_volume) {
     time_t now = time(0);
     tm* ltm = localtime(&now);
-    char time_str[10];
-    strftime(time_str, sizeof(time_str), "%H:%M", ltm);
-    std::string full_header = " STREAM HOPPER  |  LIVE  |  🔊 VOL: " + std::to_string((int)current_volume) + "%  |  🕐 " + time_str + " ";
+    std::stringstream time_ss;
+    time_ss << std::put_time(ltm, "%H:%M");
+    std::string full_header = " STREAM HOPPER  |  LIVE  |  🔊 VOL: " + std::to_string((int)current_volume) + "%  |  🕐 " + time_ss.str() + " ";
     attron(A_REVERSE);
     mvprintw(0, 0, "%s", std::string(width, ' ').c_str());
     mvprintw(0, 1, "%s", truncate_string(full_header, width - 2).c_str());

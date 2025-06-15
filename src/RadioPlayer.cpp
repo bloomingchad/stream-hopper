@@ -11,6 +11,7 @@
 #include <iomanip>
 #include <iostream>
 #include <ncurses.h>
+#include <sstream>
 #include <unordered_set>
 
 #define FADE_TIME_MS 900
@@ -402,10 +403,11 @@ void RadioPlayer::on_title_changed(RadioStream& station, const std::string& new_
     
     auto now = std::chrono::system_clock::now();
     std::time_t now_c = std::chrono::system_clock::to_time_t(now);
-    char full_time_buf[100];
-    std::strftime(full_time_buf, sizeof(full_time_buf), "%Y-%m-%d %H:%M:%S", std::localtime(&now_c));
+    std::tm now_tm = *std::localtime(&now_c);
+    std::stringstream time_ss;
+    time_ss << std::put_time(&now_tm, "%Y-%m-%d %H:%M:%S");
     
-    json history_entry_for_file = { std::string(full_time_buf), title_to_log };
+    json history_entry_for_file = { time_ss.str(), title_to_log };
     
     {
         std::lock_guard<std::mutex> lock(m_history_mutex);
