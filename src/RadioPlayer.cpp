@@ -24,6 +24,7 @@
 #define DUCK_VOLUME 40.0 // <-- ADDED DUCK VOLUME
 
 const std::string FAVORITES_FILENAME = "radio_favorites.json";
+const std::string SESSION_FILENAME = "radio_session.json";
 
 using nlohmann::json;
 
@@ -58,8 +59,11 @@ RadioPlayer::RadioPlayer(const std::vector<std::pair<std::string, std::string>>&
     if (!m_stations.empty()) {
         m_station_switch_duration = SMALL_MODE_TOTAL_TIME_SECONDS / static_cast<int>(m_stations.size());
     }
+
+    load_session_from_disk();
     load_history_from_disk();
     load_favorites_from_disk();
+
     for (int i = 0; i < static_cast<int>(m_stations.size()); ++i) {
         double initial_volume = (i == m_active_station_idx) ? 100.0 : 0.0;
         m_stations[i].initialize(initial_volume);
@@ -89,6 +93,7 @@ RadioPlayer::~RadioPlayer() {
     
     save_history_to_disk();
     save_favorites_to_disk();
+    save_session_to_disk();
 }
 
 void RadioPlayer::run() {
@@ -522,5 +527,39 @@ void RadioPlayer::save_history_to_disk() {
     std::ofstream o("radio_history.json");
     if (o.is_open()) {
         o << std::setw(4) << *m_song_history << std::endl;
+    }
+}
+
+void RadioPlayer::load_session_from_disk() {
+    std::ifstream i(SESSION_FILENAME);
+    if (!i.is_open()) return;
+
+    try {
+        json session_data;
+        i >> session_data;
+        if (session_data.is_object() && session_data.contains("last_station_name")) {
+            std::string last_station_name = session_data["last_station_name"].get<std::string>();
+            auto it = std::find_if(m_stations.begin(), m_stations.end(), 
+                                   [&last_station_name](const RadioStream& station) {
+                                       return station.getName() == last_station_name;
+                                   });
+            if (it != m_stations.end()) {
+                m_active_station_idx = std::distance(m_stations.begin(), it);
+            }
+        }
+    } catch (const json::parse_error&) {
+        // Silently ignore parse errors, will default to first station
+    }
+}
+
+void RadioPlayer::save_session_to_disk() {
+    if (m_stations.empty()) return;
+
+    json session_data;
+    session_data["last_station_name"] = m_stations[m_active_station_idx].getName();
+
+    std::ofstream o(SESSION_FILENAME);
+    if (o.is_open()) {
+        o << std::setw(4) << session_data << std::endl;
     }
 }
