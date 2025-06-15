@@ -146,13 +146,9 @@ bool RadioPlayer::update_state() {
         return true;
     }
     
-    for (const auto& station : m_stations) {
-        if (station.isFading()) {
-            return true;
-        }
-    }
-    
-    return false;
+    return std::any_of(m_stations.cbegin(), m_stations.cend(), [](const RadioStream& station) {
+        return station.isFading();
+    });
 }
 
 void RadioPlayer::on_key_enter() {
@@ -430,20 +426,20 @@ void RadioPlayer::on_stream_eof(RadioStream& station) {
 
 void RadioPlayer::handle_mpv_event(mpv_event* event) {
     if (event->event_id != MPV_EVENT_PROPERTY_CHANGE) return;
-    mpv_event_property* prop = (mpv_event_property*)event->data;
+    mpv_event_property* prop = reinterpret_cast<mpv_event_property*>(event->data);
     RadioStream* station = find_station_by_id(event->reply_userdata);
     if (!station) return;
     
     bool state_changed = false;
     if (strcmp(prop->name, "media-title") == 0 && prop->format == MPV_FORMAT_STRING) {
-        char* title_cstr = *(char**)prop->data;
+        char* title_cstr = *reinterpret_cast<char**>(prop->data);
         on_title_changed(*station, title_cstr ? title_cstr : "N/A");
     } else if (strcmp(prop->name, "eof-reached") == 0 && prop->format == MPV_FORMAT_FLAG) {
-        if (*(int*)prop->data) {
+        if (*reinterpret_cast<int*>(prop->data)) {
             on_stream_eof(*station);
         }
     } else if (strcmp(prop->name, "core-idle") == 0 && prop->format == MPV_FORMAT_FLAG) {
-        bool is_idle = *(int*)prop->data;
+        bool is_idle = *reinterpret_cast<int*>(prop->data);
         if (station->isBuffering() != is_idle) {
             station->setBuffering(is_idle);
             state_changed = true;

@@ -343,11 +343,11 @@ void UIManager::draw_history_panel(int y, int x, int w, int h, const RadioStream
                                    const nlohmann::json& history, bool is_focused, int scroll_offset) {
     if (h <= 0) return;
     draw_box(y, x, w, h, "📝 RECENT HISTORY", is_focused);
-    int inner_w = w - 5;
-    int panel_height = h - 2;
 
     const auto& station_name = station.getName();
     if (history.contains(station_name)) {
+        int inner_w = w - 5;
+        int panel_height = h - 2;
         const auto& station_history = history.at(station_name);
         if (station_history.empty()) return;
 

@@ -34,3 +34,5 @@
 build/
 radio_history.json
 radio_favorites.json
+*.txt
+*.json
