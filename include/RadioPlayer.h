@@ -22,7 +22,7 @@ enum class ActivePanel {
 
 class RadioPlayer {
 public:
-    RadioPlayer(std::vector<std::pair<std::string, std::string>> station_data);
+    RadioPlayer(const std::vector<std::pair<std::string, std::string>>& station_data);
     ~RadioPlayer();
 
     void run();

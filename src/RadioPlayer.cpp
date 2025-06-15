@@ -36,7 +36,7 @@ bool contains_ci(const std::string& haystack, const std::string& needle) {
 }
 
 
-RadioPlayer::RadioPlayer(std::vector<std::pair<std::string, std::string>> station_data)
+RadioPlayer::RadioPlayer(const std::vector<std::pair<std::string, std::string>>& station_data)
     : m_ui(std::make_unique<UIManager>()),
       m_active_station_idx(0),
       m_quit_flag(false),
