@@ -6,7 +6,9 @@
 
 RadioStream::RadioStream(int id, std::string name, std::string url)
     : m_id(id), m_name(std::move(name)), m_url(std::move(url)), m_mpv(nullptr),
-      m_current_title("Initializing..."), m_is_muted(false), m_is_ducked(false), // <-- INITIALIZE
+      m_is_initialized(false),
+      m_current_title("..."),
+      m_is_muted(false), m_is_ducked(false),
       m_current_volume(0.0),
       m_pre_mute_volume(100.0), m_is_fading(false), m_target_volume(0.0), m_is_favorite(false),
       m_has_logged_first_song(false), m_is_buffering(false), 
@@ -17,9 +19,10 @@ RadioStream::~RadioStream() { destroy(); }
 RadioStream::RadioStream(RadioStream &&other) noexcept
     : m_id(other.m_id), m_name(std::move(other.m_name)),
       m_url(std::move(other.m_url)), m_mpv(other.m_mpv),
+      m_is_initialized(other.m_is_initialized.load()),
       m_current_title(other.getCurrentTitle()),
       m_is_muted(other.m_is_muted.load()),
-      m_is_ducked(other.m_is_ducked.load()), // <-- ADDED
+      m_is_ducked(other.m_is_ducked.load()),
       m_current_volume(other.m_current_volume.load()),
       m_pre_mute_volume(other.m_pre_mute_volume.load()),
       m_is_fading(other.m_is_fading.load()),
@@ -39,9 +42,10 @@ RadioStream &RadioStream::operator=(RadioStream &&other) noexcept {
     m_name = std::move(other.m_name);
     m_url = std::move(other.m_url);
     m_mpv = other.m_mpv;
+    m_is_initialized.store(other.m_is_initialized.load());
     setCurrentTitle(other.getCurrentTitle());
     m_is_muted.store(other.m_is_muted.load());
-    m_is_ducked.store(other.m_is_ducked.load()); // <-- ADDED
+    m_is_ducked.store(other.m_is_ducked.load());
     m_current_volume.store(other.m_current_volume.load());
     m_pre_mute_volume.store(other.m_pre_mute_volume.load());
     m_is_fading.store(other.m_is_fading.load());
@@ -61,16 +65,41 @@ RadioStream &RadioStream::operator=(RadioStream &&other) noexcept {
 }
 
 void RadioStream::initialize(double initial_volume) {
+  if (m_is_initialized) return;
+
   m_mpv = mpv_create();
   if (!m_mpv) {
     throw std::runtime_error("Failed to create MPV instance for " + m_name);
   }
+  
+  // --- The Final, Definitive MPV Configuration Block ---
+  // Synthesized from profiling, previous experience, and expert analysis.
+
+  // Core Behavior: Isolate from system, disable all unneeded high-level features.
+  mpv_set_option_string(m_mpv, "config", "no");
+  mpv_set_option_string(m_mpv, "load-scripts", "no");
+  mpv_set_option_string(m_mpv, "ytdl", "no");
+  mpv_set_option_string(m_mpv, "input-default-bindings", "no");
+  mpv_set_option_string(m_mpv, "input-media-keys", "no");
+
+  // Resource Management: Aggressive memory and CPU conservation.
+  mpv_set_option_string(m_mpv, "vo", "null");
+  mpv_set_option_string(m_mpv, "hwdec", "no");
+  mpv_set_option_string(m_mpv, "cache", "no");
+  mpv_set_option_string(m_mpv, "demuxer-max-bytes", "1MiB");
+  mpv_set_option_string(m_mpv, "demuxer-max-back-bytes", "1KiB"); // <-- ADDED: No back-buffer for live streams.
+  mpv_set_option_string(m_mpv, "audio-buffer", "0.1");
+  
+  // Network Resilience & Behavior
+  mpv_set_option_string(m_mpv, "timeout", "5");
+  mpv_set_option_string(m_mpv, "demuxer-lavf-o", "reconnect=1,reconnect_streamed=1,reconnect_delay_max=5");
+  
+  // UI & Logging: Remain completely headless and silent.
+  mpv_set_option_string(m_mpv, "terminal", "no");
+  mpv_set_option_string(m_mpv, "msg-level", "all=error");
+  // --- End Configuration Block ---
+
   check_mpv_error(mpv_initialize(m_mpv), "mpv_initialize for " + m_name);
-  mpv_set_property_string(m_mpv, "vo", "null");
-  mpv_set_property_string(m_mpv, "audio-display", "no");
-  mpv_set_property_string(m_mpv, "input-default-bindings", "no");
-  mpv_set_property_string(m_mpv, "terminal", "no");
-  mpv_set_property_string(m_mpv, "msg-level", "all=warn");
   
   check_mpv_error(
       mpv_observe_property(m_mpv, m_id, "media-title", MPV_FORMAT_STRING),
@@ -89,14 +118,23 @@ void RadioStream::initialize(double initial_volume) {
   m_target_volume = initial_volume;
   
   mpv_set_property_async(m_mpv, 0, "volume", MPV_FORMAT_DOUBLE, &initial_volume);
+  
+  m_is_initialized = true;
+  setCurrentTitle("Initializing...");
 }
 
 void RadioStream::destroy() {
+  if (!m_is_initialized) return;
+  
   if (m_mpv) {
     mpv_terminate_destroy(m_mpv);
     m_mpv = nullptr;
   }
+  m_is_initialized = false;
+  setCurrentTitle("...");
 }
+
+bool RadioStream::isInitialized() const { return m_is_initialized; }
 
 int RadioStream::getID() const { return m_id; }
 const std::string &RadioStream::getName() const { return m_name; }
@@ -116,10 +154,8 @@ void RadioStream::setCurrentTitle(const std::string &title) {
 bool RadioStream::isMuted() const { return m_is_muted; }
 void RadioStream::setMuted(bool muted) { m_is_muted = muted; }
 
-// --- ADDED FOR DUCKING ---
 bool RadioStream::isDucked() const { return m_is_ducked; }
 void RadioStream::setDucked(bool ducked) { m_is_ducked = ducked; }
-// --- END ADDED ---
 
 double RadioStream::getCurrentVolume() const { return m_current_volume; }
 void RadioStream::setCurrentVolume(double vol) { m_current_volume = vol; }

@@ -21,6 +21,8 @@ public:
     void initialize(double initial_volume);
     void destroy();
 
+    bool isInitialized() const;
+
     int getID() const;
     const std::string& getName() const;
     const std::string& getURL() const;
@@ -32,10 +34,8 @@ public:
     bool isMuted() const;
     void setMuted(bool muted);
 
-    // --- ADDED FOR DUCKING ---
     bool isDucked() const;
     void setDucked(bool ducked);
-    // --- END ADDED ---
 
     double getCurrentVolume() const;
     void setCurrentVolume(double vol);
@@ -68,11 +68,13 @@ private:
     std::string m_url;
     mpv_handle* m_mpv;
     
+    std::atomic<bool> m_is_initialized;
+
     mutable std::mutex m_title_mutex;
     std::string m_current_title;
 
     std::atomic<bool> m_is_muted;
-    std::atomic<bool> m_is_ducked; // <-- ADDED
+    std::atomic<bool> m_is_ducked;
     std::atomic<double> m_current_volume;
     std::atomic<double> m_pre_mute_volume;
     std::atomic<bool> m_is_fading;
