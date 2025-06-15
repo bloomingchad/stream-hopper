@@ -8,7 +8,7 @@ RadioStream::RadioStream(int id, std::string name, std::string url)
     : m_id(id), m_name(std::move(name)), m_url(std::move(url)), m_mpv(nullptr),
       m_is_initialized(false),
       m_current_title("..."),
-      m_is_muted(false), m_is_ducked(false),
+      m_bitrate(0), m_is_muted(false), m_is_ducked(false),
       m_current_volume(0.0),
       m_pre_mute_volume(100.0), m_is_fading(false), m_target_volume(0.0), m_is_favorite(false),
       m_has_logged_first_song(false), m_is_buffering(false), 
@@ -21,6 +21,7 @@ RadioStream::RadioStream(RadioStream &&other) noexcept
       m_url(std::move(other.m_url)), m_mpv(other.m_mpv),
       m_is_initialized(other.m_is_initialized.load()),
       m_current_title(other.getCurrentTitle()),
+      m_bitrate(other.m_bitrate.load()),
       m_is_muted(other.m_is_muted.load()),
       m_is_ducked(other.m_is_ducked.load()),
       m_current_volume(other.m_current_volume.load()),
@@ -44,6 +45,7 @@ RadioStream &RadioStream::operator=(RadioStream &&other) noexcept {
     m_mpv = other.m_mpv;
     m_is_initialized.store(other.m_is_initialized.load());
     setCurrentTitle(other.getCurrentTitle());
+    m_bitrate.store(other.m_bitrate.load());
     m_is_muted.store(other.m_is_muted.load());
     m_is_ducked.store(other.m_is_ducked.load());
     m_current_volume.store(other.m_current_volume.load());
@@ -105,6 +107,9 @@ void RadioStream::initialize(double initial_volume) {
       mpv_observe_property(m_mpv, m_id, "media-title", MPV_FORMAT_STRING),
       "observe media-title");
   check_mpv_error(
+      mpv_observe_property(m_mpv, m_id, "audio-bitrate", MPV_FORMAT_INT64),
+      "observe audio-bitrate");
+  check_mpv_error(
       mpv_observe_property(m_mpv, m_id, "eof-reached", MPV_FORMAT_FLAG),
       "observe eof-reached");
   check_mpv_error(
@@ -150,6 +155,9 @@ void RadioStream::setCurrentTitle(const std::string &title) {
   std::lock_guard<std::mutex> lock(m_title_mutex);
   m_current_title = title;
 }
+
+int RadioStream::getBitrate() const { return m_bitrate; }
+void RadioStream::setBitrate(int bitrate) { m_bitrate = bitrate; }
 
 bool RadioStream::isMuted() const { return m_is_muted; }
 void RadioStream::setMuted(bool muted) { m_is_muted = muted; }

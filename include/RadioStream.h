@@ -31,6 +31,9 @@ public:
     std::string getCurrentTitle() const;
     void setCurrentTitle(const std::string& title);
 
+    int getBitrate() const;
+    void setBitrate(int bitrate);
+
     bool isMuted() const;
     void setMuted(bool muted);
 
@@ -73,6 +76,7 @@ private:
     mutable std::mutex m_title_mutex;
     std::string m_current_title;
 
+    std::atomic<int> m_bitrate;
     std::atomic<bool> m_is_muted;
     std::atomic<bool> m_is_ducked;
     std::atomic<double> m_current_volume;

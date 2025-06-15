@@ -8,11 +8,13 @@
 #include <sstream>
 #include <cstring>
 #include <ctime>
+#include <cmath> // For std::abs
 
 
 // Constants from the old RadioPlayer
 #define FADE_TIME_MS 900
 #define DUCK_VOLUME 40.0
+#define BITRATE_REDRAW_THRESHOLD 2
 
 StationManager::StationManager(const std::vector<std::pair<std::string, std::string>>& station_data, AppState& app_state)
     : m_app_state(app_state) {
@@ -208,7 +210,6 @@ void StationManager::onTitleChanged(RadioStream& station, const std::string& new
     
     m_app_state.getHistory()[station.getName()].push_back(history_entry_for_file);
     
-    // Auto-save history on each new entry
     m_app_state.saveHistoryToDisk(); 
     station.setCurrentTitle(new_title);
     m_app_state.needs_redraw = true;
@@ -228,10 +229,20 @@ void StationManager::handleMpvEvent(mpv_event* event) {
     RadioStream* station = findStationById(event->reply_userdata);
     if (!station) return;
     
+    bool is_active_station = (station->getID() == m_app_state.active_station_idx);
     bool state_changed = false;
+
     if (strcmp(prop->name, "media-title") == 0 && prop->format == MPV_FORMAT_STRING) {
         char* title_cstr = *reinterpret_cast<char**>(prop->data);
         onTitleChanged(*station, title_cstr ? title_cstr : "N/A");
+    } else if (strcmp(prop->name, "audio-bitrate") == 0 && prop->format == MPV_FORMAT_INT64) {
+        int old_bitrate = station->getBitrate();
+        int new_bitrate = static_cast<int>(*reinterpret_cast<int64_t*>(prop->data) / 1000);
+        station->setBitrate(new_bitrate);
+        // Only trigger redraw for bitrate changes on the ACTIVE station to prevent background flicker
+        if (is_active_station && std::abs(new_bitrate - old_bitrate) > BITRATE_REDRAW_THRESHOLD) {
+            state_changed = true;
+        }
     } else if (strcmp(prop->name, "eof-reached") == 0 && prop->format == MPV_FORMAT_FLAG) {
         if (*reinterpret_cast<int*>(prop->data)) {
             onStreamEof(*station);
@@ -240,6 +251,7 @@ void StationManager::handleMpvEvent(mpv_event* event) {
         bool is_idle = *reinterpret_cast<int*>(prop->data);
         if (station->isBuffering() != is_idle) {
             station->setBuffering(is_idle);
+            // Always redraw on a buffering change to update the status icon (e.g., 🤔)
             state_changed = true;
         }
     }

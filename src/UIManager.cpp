@@ -70,6 +70,9 @@ UIManager::UIManager() : m_station_scroll_offset(0) {
     init_pair(2, COLOR_GREEN, -1);
     init_pair(3, COLOR_CYAN, -1);
     init_pair(4, COLOR_MAGENTA, -1);
+    init_pair(5, COLOR_WHITE, COLOR_BLUE);    // High quality bitrate (background)
+    init_pair(6, COLOR_WHITE, COLOR_GREEN);   // Medium quality bitrate (background)
+    init_pair(7, COLOR_WHITE, COLOR_YELLOW);  // Low quality bitrate (background)}
 }
 
 UIManager::~UIManager() {
@@ -300,7 +303,26 @@ void UIManager::draw_now_playing_panel(int y, int x, int w, int h, const RadioSt
     mvwprintw(stdscr, y + 2, x + 3, "%s", truncate_string(title, inner_w - 2).c_str());
     attroff(A_BOLD);
     
-    mvwprintw(stdscr, y + 3, x + 3, "%s", truncate_string(station.getName(), inner_w - 2).c_str());
+    // Draw station name and bitrate on the same line
+    int bitrate = station.getBitrate();
+    std::string bitrate_str;
+    if (bitrate > 0) {
+        bitrate_str = " " + std::to_string(bitrate) + "k ";
+    }
+
+    size_t max_name_width = inner_w - bitrate_str.length() - 2;
+    mvwprintw(stdscr, y + 3, x + 3, "%s", truncate_string(station.getName(), max_name_width).c_str());
+
+    if (!bitrate_str.empty()) {
+        int color_pair_num = 0;
+        if (bitrate > 200)      { color_pair_num = 5; } // Blue BG
+        else if (bitrate >= 96) { color_pair_num = 6; } // Green BG
+        else                    { color_pair_num = 7; } // Yellow BG
+        
+        attron(COLOR_PAIR(color_pair_num));
+        mvwprintw(stdscr, y + 3, x + w - bitrate_str.length() - 3, "%s", bitrate_str.c_str());
+        attroff(COLOR_PAIR(color_pair_num));
+    }
 
     if (is_small_mode) {
         int bar_width = inner_w - 2;
