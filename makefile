@@ -15,6 +15,8 @@ BUILDDIR := build
 # Explicitly list all C++ source files to be compiled.
 SRCS := $(SRCDIR)/radio.cpp \
         $(SRCDIR)/RadioPlayer.cpp \
+        $(SRCDIR)/StationManager.cpp \
+        $(SRCDIR)/AppState.cpp \
         $(SRCDIR)/RadioStream.cpp \
         $(SRCDIR)/UIManager.cpp \
         $(SRCDIR)/json.cpp \
