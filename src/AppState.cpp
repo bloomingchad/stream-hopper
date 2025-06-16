@@ -25,7 +25,36 @@ AppState::AppState()
 
 json& AppState::getHistory() { return *m_song_history; }
 
+void AppState::addHistoryEntry(const std::string& station_name, const json& entry) {
+    std::lock_guard<std::mutex> lock(m_history_mutex);
+    getHistory()[station_name].push_back(entry);
+}
+
+json AppState::getStationHistory(const std::string& station_name) const {
+    std::lock_guard<std::mutex> lock(m_history_mutex);
+    if (m_song_history->contains(station_name)) {
+        return (*m_song_history)[station_name]; // Return a copy (snapshot)
+    }
+    return json::array(); // Return an empty array if station has no history
+}
+
+size_t AppState::getStationHistorySize(const std::string& station_name) const {
+    std::lock_guard<std::mutex> lock(m_history_mutex);
+    if (m_song_history->contains(station_name)) {
+        return (*m_song_history)[station_name].size();
+    }
+    return 0;
+}
+
+void AppState::ensureStationHistoryExists(const std::string& station_name) {
+    std::lock_guard<std::mutex> lock(m_history_mutex);
+    if (!m_song_history->contains(station_name)) {
+        (*m_song_history)[station_name] = json::array();
+    }
+}
+
 void AppState::loadHistoryFromDisk() {
+  std::lock_guard<std::mutex> lock(m_history_mutex);
   std::ifstream i(HISTORY_FILENAME);
   if (i.is_open()) {
     try {

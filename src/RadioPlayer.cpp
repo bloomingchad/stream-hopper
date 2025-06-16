@@ -87,9 +87,8 @@ void RadioPlayer::run() {
 
         if (m_app_state->needs_redraw.exchange(false)) {
             if (!m_app_state->copy_mode_active) {
-                m_ui->draw(m_station_manager->getStations(), m_app_state->active_station_idx, m_app_state->getHistory(),
-                           m_app_state->active_panel, m_app_state->history_scroll_offset, m_app_state->small_mode_active,
-                           getRemainingSecondsForCurrentStation(), getStationSwitchDuration(), false);
+                m_ui->draw(m_station_manager->getStations(), *m_app_state,
+                           getRemainingSecondsForCurrentStation(), getStationSwitchDuration());
             }
         }
 
@@ -171,12 +170,10 @@ void RadioPlayer::handleInput(int ch) {
                 m_app_state->active_station_idx = new_idx;
                 m_app_state->history_scroll_offset = 0;
             } else { // HISTORY
-                const auto& history = m_app_state->getHistory();
                 const auto& current_station_name = stations[old_idx].getName();
-                if (history.contains(current_station_name)) {
-                    if (m_app_state->history_scroll_offset < (int)history[current_station_name].size() - 1) {
-                         m_app_state->history_scroll_offset++;
-                    }
+                size_t history_size = m_app_state->getStationHistorySize(current_station_name);
+                if (history_size > 0 && m_app_state->history_scroll_offset < (int)history_size - 1) {
+                    m_app_state->history_scroll_offset++;
                 }
             }
             break;
@@ -199,8 +196,8 @@ void RadioPlayer::handleInput(int ch) {
             m_app_state->copy_mode_active = true;
             m_app_state->copy_mode_start_time = std::chrono::steady_clock::now();
             m_ui->setInputTimeout(COPY_MODE_REFRESH_MS);
-            m_ui->draw(stations, old_idx, m_app_state->getHistory(), m_app_state->active_panel, m_app_state->history_scroll_offset,
-                       m_app_state->small_mode_active, getRemainingSecondsForCurrentStation(), getStationSwitchDuration(), true);
+            m_ui->draw(m_station_manager->getStations(), *m_app_state, 
+                       getRemainingSecondsForCurrentStation(), getStationSwitchDuration());
             m_app_state->songs_copied++; // <-- INCREMENT COPY COUNTER
             break;
         case 'q': case 'Q':

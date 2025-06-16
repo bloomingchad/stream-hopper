@@ -2,6 +2,7 @@
 #include "UIManager.h"
 #include "RadioPlayer.h"
 #include "RadioStream.h"
+#include "AppState.h" // <-- ADDED
 #include <ncurses.h>
 #include <string>
 #include <vector>
@@ -85,27 +86,26 @@ void UIManager::setInputTimeout(int milliseconds) {
     timeout(milliseconds);
 }
 
-void UIManager::draw(const std::vector<RadioStream>& stations, int active_station_idx, 
-                     const nlohmann::json& history, ActivePanel active_panel, int scroll_offset, bool is_small_mode,
-                     int remaining_seconds, int total_duration, bool is_copy_mode) {
+void UIManager::draw(const std::vector<RadioStream>& stations, const AppState& app_state,
+                     int remaining_seconds, int total_duration) {
     clear();
     int height, width;
     getmaxyx(stdscr, height, width);
 
     double display_vol = 0.0;
     if (!stations.empty()) {
-        const auto& active_station = stations[active_station_idx];
+        const auto& active_station = stations[app_state.active_station_idx];
         display_vol = active_station.isMuted() ? 0.0 : active_station.getCurrentVolume();
     }
     
     draw_header_bar(width, display_vol);
 
     if (width < COMPACT_MODE_WIDTH) {
-        draw_compact_mode(width, height, stations, active_station_idx, history, active_panel, scroll_offset, is_small_mode, remaining_seconds, total_duration, is_copy_mode);
-        draw_footer_bar(height - 1, width, true, is_small_mode, is_copy_mode);
+        draw_compact_mode(width, height, stations, app_state, remaining_seconds, total_duration);
+        draw_footer_bar(height - 1, width, true, app_state);
     } else {
-        draw_full_mode(width, height, stations, active_station_idx, history, active_panel, scroll_offset, is_small_mode, remaining_seconds, total_duration, is_copy_mode);
-        draw_footer_bar(height - 1, width, false, is_small_mode, is_copy_mode);
+        draw_full_mode(width, height, stations, app_state, remaining_seconds, total_duration);
+        draw_footer_bar(height - 1, width, false, app_state);
     }
     
     refresh();
@@ -127,11 +127,11 @@ void UIManager::draw_header_bar(int width, double current_volume) {
     attroff(A_REVERSE);
 }
 
-void UIManager::draw_footer_bar(int y, int width, bool is_compact, bool is_small_mode, bool is_copy_mode) {
+void UIManager::draw_footer_bar(int y, int width, bool is_compact, const AppState& app_state) {
     std::string footer_text;
-    if (is_copy_mode) {
+    if (app_state.copy_mode_active) {
         footer_text = " [COPY MODE] UI Paused. Press any key to resume... ";
-    } else if (is_small_mode) {
+    } else if (app_state.small_mode_active) {
         footer_text = " [S] Exit Discovery   [C] Copy Mode   [Q] Quit ";
     } else if (is_compact) {
         footer_text = " [Nav] [Tab] Panel [F] Fav [D] Duck [C] Copy [Q] Quit ";
@@ -142,7 +142,7 @@ void UIManager::draw_footer_bar(int y, int width, bool is_compact, bool is_small
     attron(A_REVERSE);
     mvprintw(y, 0, "%*s", width, "");
 
-    if (is_copy_mode) {
+    if (app_state.copy_mode_active) {
         attron(COLOR_PAIR(4));
         attron(A_BOLD);
     }
@@ -153,20 +153,19 @@ void UIManager::draw_footer_bar(int y, int width, bool is_compact, bool is_small
         mvprintw(y, 1, "%s", truncate_string(footer_text, width - 2).c_str());
     }
     
-    if (is_copy_mode) {
+    if (app_state.copy_mode_active) {
         attroff(A_BOLD);
         attroff(COLOR_PAIR(4));
     }
     attroff(A_REVERSE);
 }
 
-void UIManager::draw_compact_mode(int width, int height, const std::vector<RadioStream>& stations, int active_idx,
-                                  const nlohmann::json& history, ActivePanel active_panel, int scroll_offset, bool is_small_mode,
-                                  int remaining_seconds, int total_duration, bool is_copy_mode) {
+void UIManager::draw_compact_mode(int width, int height, const std::vector<RadioStream>& stations, const AppState& app_state,
+                                  int remaining_seconds, int total_duration) {
     if (stations.empty()) return;
-    const RadioStream& active_station = stations[active_idx];
+    const RadioStream& active_station = stations[app_state.active_station_idx];
 
-    int now_playing_h = is_small_mode ? 6 : 5;
+    int now_playing_h = app_state.small_mode_active ? 6 : 5;
     int remaining_h = height - now_playing_h - 2;
     int stations_h = std::max(3, static_cast<int>(remaining_h * 0.6));
     int history_h = remaining_h - stations_h;
@@ -179,16 +178,16 @@ void UIManager::draw_compact_mode(int width, int height, const std::vector<Radio
     int stations_y = 2 + now_playing_h;
     int history_y = stations_y + stations_h;
 
-    draw_now_playing_panel(2, 1, width - 2, now_playing_h, active_station, is_small_mode, remaining_seconds, total_duration);
+    draw_now_playing_panel(2, 1, width - 2, now_playing_h, active_station, app_state.small_mode_active, remaining_seconds, total_duration);
 
-    draw_box(stations_y, 1, width - 2, stations_h, "STATIONS", active_panel == ActivePanel::STATIONS && !is_copy_mode);
+    draw_box(stations_y, 1, width - 2, stations_h, "STATIONS", app_state.active_panel == ActivePanel::STATIONS && !app_state.copy_mode_active);
     
     int visible_items = stations_h > 2 ? stations_h - 2 : 0;
-    if (active_idx < m_station_scroll_offset) {
-        m_station_scroll_offset = active_idx;
+    if (app_state.active_station_idx < m_station_scroll_offset) {
+        m_station_scroll_offset = app_state.active_station_idx;
     }
-    if (active_idx >= m_station_scroll_offset + visible_items) {
-        m_station_scroll_offset = active_idx - visible_items + 1;
+    if (app_state.active_station_idx >= m_station_scroll_offset + visible_items) {
+        m_station_scroll_offset = app_state.active_station_idx - visible_items + 1;
     }
 
     for (int i = 0; i < visible_items; ++i) {
@@ -196,9 +195,9 @@ void UIManager::draw_compact_mode(int width, int height, const std::vector<Radio
         if (station_idx >= (int)stations.size()) break;
 
         const auto& station = stations[station_idx];
-        bool is_active = (station_idx == active_idx);
+        bool is_active = (station_idx == app_state.active_station_idx);
         
-        if (is_active && !is_copy_mode) {
+        if (is_active && !app_state.copy_mode_active) {
             attron(A_REVERSE);
         }
 
@@ -215,32 +214,31 @@ void UIManager::draw_compact_mode(int width, int height, const std::vector<Radio
         
         mvwprintw(stdscr, stations_y + 1 + i, 3, "%-*s", width - 5, truncate_string(line, width - 6).c_str());
 
-        if (is_active && !is_copy_mode) {
+        if (is_active && !app_state.copy_mode_active) {
             attroff(A_REVERSE);
         }
     }
 
     if (history_h > 0) {
-        draw_history_panel(history_y, 1, width - 2, history_h, active_station, history, active_panel == ActivePanel::HISTORY && !is_copy_mode, scroll_offset);
+        draw_history_panel(history_y, 1, width - 2, history_h, active_station, app_state, app_state.active_panel == ActivePanel::HISTORY && !app_state.copy_mode_active);
     }
 }
 
-void UIManager::draw_full_mode(int width, int height, const std::vector<RadioStream>& stations, int active_station_idx, 
-                               const nlohmann::json& history, ActivePanel active_panel, int scroll_offset, bool is_small_mode,
-                               int remaining_seconds, int total_duration, bool is_copy_mode) {
+void UIManager::draw_full_mode(int width, int height, const std::vector<RadioStream>& stations, const AppState& app_state,
+                               int remaining_seconds, int total_duration) {
     if (stations.empty()) return;
 
     int left_panel_w = std::max(35, width / 3);
     int right_panel_w = width - left_panel_w;
-    int top_right_h = is_small_mode ? 7 : 6;
+    int top_right_h = app_state.small_mode_active ? 7 : 6;
     int bottom_right_h = height - top_right_h - 2;
 
-    draw_stations_panel(1, 0, left_panel_w, height - 2, stations, active_station_idx, active_panel == ActivePanel::STATIONS && !is_copy_mode);
-    const RadioStream& current_station = stations[active_station_idx];
+    draw_stations_panel(1, 0, left_panel_w, height - 2, stations, app_state.active_station_idx, app_state.active_panel == ActivePanel::STATIONS && !app_state.copy_mode_active);
+    const RadioStream& current_station = stations[app_state.active_station_idx];
     
-    draw_now_playing_panel(1, left_panel_w, right_panel_w, top_right_h, current_station, is_small_mode, remaining_seconds, total_duration);
+    draw_now_playing_panel(1, left_panel_w, right_panel_w, top_right_h, current_station, app_state.small_mode_active, remaining_seconds, total_duration);
     
-    draw_history_panel(1 + top_right_h, left_panel_w, right_panel_w, bottom_right_h, current_station, history, active_panel == ActivePanel::HISTORY && !is_copy_mode, scroll_offset);
+    draw_history_panel(1 + top_right_h, left_panel_w, right_panel_w, bottom_right_h, current_station, app_state, app_state.active_panel == ActivePanel::HISTORY && !app_state.copy_mode_active);
 }
 
 void UIManager::draw_stations_panel(int y, int x, int w, int h, const std::vector<RadioStream>& stations, 
@@ -361,16 +359,16 @@ void UIManager::draw_now_playing_panel(int y, int x, int w, int h, const RadioSt
 }
 
 void UIManager::draw_history_panel(int y, int x, int w, int h, const RadioStream& station, 
-                                   const nlohmann::json& history, bool is_focused, int scroll_offset) {
+                                   const AppState& app_state, bool is_focused) {
     if (h <= 0) return;
     draw_box(y, x, w, h, "📝 RECENT HISTORY", is_focused);
 
-    const auto& station_name = station.getName();
-    if (history.contains(station_name)) {
+    const auto station_history = app_state.getStationHistory(station.getName());
+    const int scroll_offset = app_state.history_scroll_offset;
+
+    if (!station_history.empty()) {
         int inner_w = w - 5;
         int panel_height = h - 2;
-        const auto& station_history = history.at(station_name);
-        if (station_history.empty()) return;
 
         int display_count = 0;
         auto start_it = station_history.rbegin();

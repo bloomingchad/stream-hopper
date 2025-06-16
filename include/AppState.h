@@ -36,8 +36,11 @@ public:
   std::atomic<int> new_songs_found;
   std::atomic<int> songs_copied;
 
-  // History Management
-  nlohmann::json& getHistory();
+  // --- THREAD-SAFE HISTORY MANAGEMENT ---
+  void addHistoryEntry(const std::string& station_name, const nlohmann::json& entry);
+  nlohmann::json getStationHistory(const std::string& station_name) const;
+  size_t getStationHistorySize(const std::string& station_name) const;
+  void ensureStationHistoryExists(const std::string& station_name);
   void loadHistoryFromDisk();
   void saveHistoryToDisk();
 
@@ -48,8 +51,9 @@ public:
   void saveSession(const std::vector<RadioStream>& stations);
 
 private:
+  nlohmann::json& getHistory(); // Now private
   std::unique_ptr<nlohmann::json> m_song_history;
-  std::mutex m_history_mutex;
+  mutable std::mutex m_history_mutex; // Made mutable to be used in const methods
 };
 
 #endif // APPSTATE_H
