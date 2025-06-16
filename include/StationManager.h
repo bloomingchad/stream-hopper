@@ -15,7 +15,7 @@ class AppState;
 
 class StationManager {
 public:
-  StationManager(const std::vector<std::pair<std::string, std::string>>& station_data, AppState& app_state);
+  StationManager(const std::vector<std::pair<std::string, std::vector<std::string>>>& station_data, AppState& app_state);
   ~StationManager();
 
   void runEventLoop();

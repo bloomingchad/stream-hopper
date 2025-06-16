@@ -17,7 +17,7 @@
 #define DUCK_VOLUME 40.0
 #define BITRATE_REDRAW_THRESHOLD 2
 
-StationManager::StationManager(const std::vector<std::pair<std::string, std::string>>& station_data, AppState& app_state)
+StationManager::StationManager(const std::vector<std::pair<std::string, std::vector<std::string>>>& station_data, AppState& app_state)
     : m_app_state(app_state) {
 
     if (station_data.empty()) {
@@ -26,7 +26,7 @@ StationManager::StationManager(const std::vector<std::pair<std::string, std::str
 
     // Create RadioStream objects
     for (size_t i = 0; i < station_data.size(); ++i) {
-        m_stations.emplace_back(i, station_data[i].first, station_data[i].second);
+        m_stations.emplace_back(i, station_data[i].first, station_data[i].second.front());
     }
     
     // Load state that affects stations (favorites, last session)

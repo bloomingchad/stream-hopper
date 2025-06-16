@@ -19,7 +19,7 @@ a terminal-based radio station switcher for discovering new music through live s
 you'll need a c++ compiler and the following development libraries:
 
 ### required tools
-- `g++` (c++17 or later)
+- `g++` (c++20 or later)
 - `make`
 - `pkg-config`
 

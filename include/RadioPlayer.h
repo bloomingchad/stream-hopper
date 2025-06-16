@@ -13,7 +13,7 @@ class StationManager;
 
 class RadioPlayer {
 public:
-    RadioPlayer(const std::vector<std::pair<std::string, std::string>>& station_data);
+    RadioPlayer(const std::vector<std::pair<std::string, std::vector<std::string>>>& station_data);
     ~RadioPlayer();
 
     void run();

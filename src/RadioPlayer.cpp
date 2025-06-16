@@ -16,7 +16,7 @@
 #define FORGOTTEN_MUTE_SECONDS 600
 #define COPY_MODE_REFRESH_MS 100
 
-RadioPlayer::RadioPlayer(const std::vector<std::pair<std::string, std::string>>& station_data) {
+RadioPlayer::RadioPlayer(const std::vector<std::pair<std::string, std::vector<std::string>>>& station_data) {
     m_app_state = std::make_unique<AppState>();
     m_station_manager = std::make_unique<StationManager>(station_data, *m_app_state);
     m_ui = std::make_unique<UIManager>();
