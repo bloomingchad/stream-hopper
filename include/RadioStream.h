@@ -7,19 +7,24 @@
 #include <mutex>
 #include <chrono>
 #include <optional>
-#include <mpv/client.h>
+#include "MpvInstance.h" // New RAII wrapper
+
+// Forward declare to avoid including mpv/client.h in this header
+struct mpv_handle;
 
 class RadioStream {
 public:
     RadioStream(int id, std::string name, std::string url);
-    ~RadioStream();
+    
+    // Rule of 5: Manually define move operations due to non-movable members
+    // (std::atomic, std::mutex). Let compiler handle destructor.
+    ~RadioStream() = default;
     RadioStream(const RadioStream&) = delete;
     RadioStream& operator=(const RadioStream&) = delete;
     RadioStream(RadioStream&& other) noexcept;
     RadioStream& operator=(RadioStream&& other) noexcept;
 
     void initialize(double initial_volume);
-    void destroy();
 
     bool isInitialized() const;
 
@@ -61,6 +66,8 @@ public:
     bool isBuffering() const;
     void setBuffering(bool buffering);
 
+
+
     std::optional<std::chrono::steady_clock::time_point> getMuteStartTime() const;
     void setMuteStartTime();
     void resetMuteStartTime();
@@ -69,7 +76,7 @@ private:
     int m_id;
     std::string m_name;
     std::string m_url;
-    mpv_handle* m_mpv;
+    MpvInstance m_mpv_instance; // Replaces raw mpv_handle*
     
     std::atomic<bool> m_is_initialized;
 
