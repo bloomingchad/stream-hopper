@@ -3,9 +3,10 @@
 
 #include <string>
 #include <vector>
-#include <thread>
+#include <thread> // Now using std::jthread
 #include <memory>
 #include <atomic>
+#include <mutex> // For protecting the thread vector
 
 #include "RadioStream.h"
 
@@ -40,9 +41,15 @@ private:
   RadioStream* findStationById(int station_id);
   bool contains_ci(const std::string& haystack, const std::string& needle);
 
+  void cleanupFinishedThreads(); // New private helper function
+
   std::vector<RadioStream> m_stations;
   AppState& m_app_state;
   std::thread m_mpv_event_thread;
+
+  // --- NEW MEMBERS FOR MANAGED FADE THREADS ---
+  std::vector<std::jthread> m_fade_threads;
+  std::mutex m_fade_threads_mutex;
 };
 
 #endif // STATIONMANAGER_H

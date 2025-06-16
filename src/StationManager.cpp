@@ -9,6 +9,7 @@
 #include <cstring>
 #include <ctime>
 #include <cmath> // For std::abs
+#include <stop_token> // For std::jthread
 
 
 // Constants from the old RadioPlayer
@@ -48,7 +49,22 @@ StationManager::StationManager(const std::vector<std::pair<std::string, std::str
 }
 
 StationManager::~StationManager() {
-    stopEventLoop();
+    // Gracefully stop all threads before saving state
+    stopEventLoop(); // Stops the main mpv event loop
+    
+    // --- NEW: Graceful shutdown for fade threads ---
+    {
+        std::lock_guard<std::mutex> lock(m_fade_threads_mutex);
+        for (auto& t : m_fade_threads) {
+            t.request_stop(); // Signal cancellation
+        }
+    } // Mutex released
+
+    // The jthread destructors in the clear() call will now join.
+    // The joins are fast because the threads will exit their loops.
+    cleanupFinishedThreads(); // Final cleanup
+    // --- END NEW ---
+
     m_app_state.saveFavorites(m_stations);
     m_app_state.saveSession(m_stations);
     m_app_state.saveHistoryToDisk();
@@ -59,7 +75,10 @@ void StationManager::runEventLoop() {
 }
 
 void StationManager::stopEventLoop() {
+    // Check if the thread was ever started before trying to join
     if (m_mpv_event_thread.joinable()) {
+        // Set the quit flag which the loop checks
+        m_app_state.quit_flag = true; 
         m_mpv_event_thread.join();
     }
 }
@@ -123,40 +142,73 @@ void StationManager::toggleAudioDucking(int station_idx) {
 void StationManager::toggleFavorite(int station_idx) {
     if (station_idx >= 0 && station_idx < (int)m_stations.size()) {
         m_stations[station_idx].toggleFavorite();
-        // Saving is handled in destructor or could be done immediately
     }
 }
 
 // --- Private Implementation ---
 
+void StationManager::cleanupFinishedThreads() {
+    std::lock_guard<std::mutex> lock(m_fade_threads_mutex);
+    // C++20 Ranges-based erase_if would be cleaner, but this is more portable for now
+    m_fade_threads.erase(
+        std::remove_if(m_fade_threads.begin(), m_fade_threads.end(), 
+            [](const std::jthread& t) {
+                return !t.joinable(); 
+            }),
+        m_fade_threads.end()
+    );
+}
+
 void StationManager::fadeAudio(RadioStream& station, double from_vol, double to_vol, int duration_ms) {
+    cleanupFinishedThreads(); // Prune any completed threads before adding a new one
+
     station.setFading(true);
     station.setTargetVolume(to_vol);
-    std::thread([this, &station, from_vol, to_vol, duration_ms]() {
+
+    std::jthread fade_worker([&station, from_vol, to_vol, duration_ms](std::stop_token token) {
         const int steps = 50;
-        const int step_delay = duration_ms > 0 ? duration_ms / steps : 0;
+        const int step_delay_ms = duration_ms > 0 ? duration_ms / steps : 0;
         const double vol_step = (steps > 0) ? (to_vol - from_vol) / steps : (to_vol - from_vol);
         double current_vol = from_vol;
-        for (int i = 0; i < steps && !m_app_state.quit_flag; ++i) {
+
+        for (int i = 0; i < steps; ++i) {
+            if (token.stop_requested()) {
+                station.setFading(false); // Reset state before exiting
+                return;
+            }
+
             current_vol += vol_step;
             station.setCurrentVolume(current_vol);
             double clamped_vol = std::max(0.0, std::min(100.0, current_vol));
-            mpv_set_property_async(station.getMpvHandle(), 0, "volume", MPV_FORMAT_DOUBLE, &clamped_vol);
-            std::this_thread::sleep_for(std::chrono::milliseconds(step_delay));
+            if(station.getMpvHandle()) { // Safety check
+                mpv_set_property_async(station.getMpvHandle(), 0, "volume", MPV_FORMAT_DOUBLE, &clamped_vol);
+            }
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(step_delay_ms));
         }
-        if (!m_app_state.quit_flag) {
+
+        if (!token.stop_requested()) {
             station.setCurrentVolume(to_vol);
             double final_vol = std::max(0.0, std::min(100.0, to_vol));
-            mpv_set_property_async(station.getMpvHandle(), 0, "volume", MPV_FORMAT_DOUBLE, &final_vol);
+            if(station.getMpvHandle()) { // Safety check
+               mpv_set_property_async(station.getMpvHandle(), 0, "volume", MPV_FORMAT_DOUBLE, &final_vol);
+            }
         }
         station.setFading(false);
-    }).detach();
+    });
+
+    // Move the thread into our managed vector
+    std::lock_guard<std::mutex> lock(m_fade_threads_mutex);
+    m_fade_threads.push_back(std::move(fade_worker));
 }
 
 void StationManager::mpvEventLoop() {
     while (!m_app_state.quit_flag) {
         bool event_found = false;
+        // The check for m_app_state.quit_flag must be inside the loop
+        // for it to terminate correctly when stopEventLoop() is called.
         for (auto& station : m_stations) {
+            if (m_app_state.quit_flag) break;
             if (!station.getMpvHandle()) continue;
             mpv_event* event = mpv_wait_event(station.getMpvHandle(), 0.001);
             if (event && event->event_id != MPV_EVENT_NONE) {
@@ -164,7 +216,7 @@ void StationManager::mpvEventLoop() {
                 event_found = true;
             }
         }
-        if (!event_found) {
+        if (!event_found && !m_app_state.quit_flag) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
     }
