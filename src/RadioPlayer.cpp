@@ -8,13 +8,16 @@
 #include <iostream>  // For exit messages
 #include <algorithm> // For std::any_of
 
-// Constants that define application behavior
-#define SMALL_MODE_TOTAL_TIME_SECONDS 1125
-#define DISCOVERY_MODE_REFRESH_MS 1000
-#define NORMAL_MODE_REFRESH_MS 100
-#define COPY_MODE_TIMEOUT_SECONDS 10
-#define FORGOTTEN_MUTE_SECONDS 600
-#define COPY_MODE_REFRESH_MS 100
+// --- Configuration Constants ---
+// Replaced C-style #defines with type-safe, scoped constants.
+namespace {
+    constexpr int SMALL_MODE_TOTAL_TIME_SECONDS = 1125;
+    constexpr int DISCOVERY_MODE_REFRESH_MS = 1000;
+    constexpr int NORMAL_MODE_REFRESH_MS = 100;
+    constexpr int COPY_MODE_TIMEOUT_SECONDS = 10;
+    constexpr int FORGOTTEN_MUTE_SECONDS = 600;
+    constexpr int COPY_MODE_REFRESH_MS = 100;
+}
 
 RadioPlayer::RadioPlayer(const std::vector<std::pair<std::string, std::vector<std::string>>>& station_data) {
     m_app_state = std::make_unique<AppState>();
