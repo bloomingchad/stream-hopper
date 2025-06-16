@@ -30,6 +30,12 @@ public:
   std::chrono::steady_clock::time_point copy_mode_start_time;
   std::chrono::steady_clock::time_point small_mode_start_time;
 
+  // --- NEW: Session Statistics ---
+  std::chrono::steady_clock::time_point session_start_time;
+  std::atomic<int> session_switches;
+  std::atomic<int> new_songs_found;
+  std::atomic<int> songs_copied;
+
   // History Management
   nlohmann::json& getHistory();
   void loadHistoryFromDisk();

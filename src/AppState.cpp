@@ -14,7 +14,12 @@ const std::string HISTORY_FILENAME = "radio_history.json";
 AppState::AppState()
     : active_station_idx(0), quit_flag(false), needs_redraw(true),
       small_mode_active(false), copy_mode_active(false),
-      active_panel(ActivePanel::STATIONS), history_scroll_offset(0) {
+      active_panel(ActivePanel::STATIONS), history_scroll_offset(0),
+      session_start_time(std::chrono::steady_clock::now()), // <-- Initialize session start time
+      session_switches(0),
+      new_songs_found(0),
+      songs_copied(0)
+{
   m_song_history = std::make_unique<json>(json::object());
 }
 

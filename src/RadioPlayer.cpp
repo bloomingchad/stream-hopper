@@ -26,22 +26,43 @@ RadioPlayer::~RadioPlayer() {
     m_app_state->quit_flag = true;
     m_station_manager->stopEventLoop();
 
+    // --- Final Summary Logic ---
+    // Ensure ncurses is shut down before we print to cout.
+    if (m_ui) {
+        m_ui.reset();
+    }
+    
+    // Calculate session duration
+    auto end_time = std::chrono::steady_clock::now();
+    auto duration_seconds = std::chrono::duration_cast<std::chrono::seconds>(end_time - m_app_state->session_start_time).count();
+    long duration_minutes = duration_seconds / 60;
+
     // Check for forgotten mute on exit
+    bool forgot_mute = false;
     if (!m_station_manager->getStations().empty()) {
         const auto& stations = m_station_manager->getStations();
         const RadioStream& active_station = stations[m_app_state->active_station_idx];
         auto mute_start_time = active_station.getMuteStartTime();
 
         if (active_station.isMuted() && mute_start_time.has_value()) {
-            auto now = std::chrono::steady_clock::now();
-            auto mute_duration = std::chrono::duration_cast<std::chrono::seconds>(now - mute_start_time.value());
+            auto mute_duration = std::chrono::duration_cast<std::chrono::seconds>(end_time - mute_start_time.value());
             if (mute_duration.count() >= FORGOTTEN_MUTE_SECONDS) {
-                if (m_ui) m_ui.reset(); // ensure ncurses is off
+                forgot_mute = true;
                 long minutes = mute_duration.count() / 60;
                 std::string unit = (minutes == 1) ? " minute" : " minutes";
                 std::cout << "hey you forgot about me for " << minutes << unit << " 😤" << std::endl;
             }
         }
+    }
+
+    if (!forgot_mute) {
+        std::cout << "---\n"
+                  << "Thank you for using Stream Hopper!\n"
+                  << "🎛️ Session Switches: " << m_app_state->session_switches << "\n"
+                  << "✨ New Songs Found: " << m_app_state->new_songs_found << "\n"
+                  << "📋 Songs Copied: " << m_app_state->songs_copied << "\n"
+                  << "🕐 Total Time: " << duration_minutes << " minutes\n"
+                  << "---" << std::endl;
     }
 }
 
@@ -177,6 +198,7 @@ void RadioPlayer::handleInput(int ch) {
             m_ui->setInputTimeout(COPY_MODE_REFRESH_MS);
             m_ui->draw(stations, old_idx, m_app_state->getHistory(), m_app_state->active_panel, m_app_state->history_scroll_offset,
                        m_app_state->small_mode_active, getRemainingSecondsForCurrentStation(), getStationSwitchDuration(), true);
+            m_app_state->songs_copied++; // <-- INCREMENT COPY COUNTER
             break;
         case 'q': case 'Q':
             m_app_state->quit_flag = true;

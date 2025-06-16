@@ -82,6 +82,8 @@ void StationManager::switchStation(int old_idx, int new_idx) {
     if (!new_station.isMuted()) {
         fadeAudio(new_station, new_station.getCurrentVolume(), 100.0, FADE_TIME_MS);
     }
+
+    m_app_state.session_switches++; // <-- INCREMENT SWITCH COUNTER
 }
 
 void StationManager::toggleMuteStation(int station_idx) {
@@ -209,6 +211,7 @@ void StationManager::onTitleChanged(RadioStream& station, const std::string& new
     nlohmann::json history_entry_for_file = { time_ss.str(), title_to_log };
     
     m_app_state.getHistory()[station.getName()].push_back(history_entry_for_file);
+    m_app_state.new_songs_found++; // <-- INCREMENT NEW SONG COUNTER
     
     m_app_state.saveHistoryToDisk(); 
     station.setCurrentTitle(new_title);
