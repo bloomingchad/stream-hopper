@@ -23,7 +23,17 @@ private:
     void updateState();
     int getRemainingSecondsForCurrentStation();
     int getStationSwitchDuration();
-    void toggleSmallMode();
+
+    // --- NEW: Input Handler Helpers ---
+    void onUpArrow();
+    void onDownArrow();
+    void onEnter();
+    void onToggleSmallMode();
+    void onToggleFavorite();
+    void onToggleDucking();
+    void onCopyMode();
+    void onQuit();
+    void onSwitchPanel();
 
     std::unique_ptr<UIManager> m_ui;
     std::unique_ptr<AppState> m_app_state;

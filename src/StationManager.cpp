@@ -10,6 +10,7 @@
 #include <ctime>
 #include <cmath> // For std::abs
 #include <stop_token> // For std::jthread
+#include <mpv/client.h> // For mpv_event definitions
 
 
 // Constants from the old RadioPlayer
@@ -277,39 +278,60 @@ void StationManager::onStreamEof(RadioStream& station) {
 }
 
 void StationManager::handleMpvEvent(mpv_event* event) {
-    if (event->event_id != MPV_EVENT_PROPERTY_CHANGE) return;
+    if (event->event_id == MPV_EVENT_PROPERTY_CHANGE) {
+        handlePropertyChange(event);
+    }
+    // Other event types like MPV_EVENT_SHUTDOWN could be handled here
+}
+
+void StationManager::handlePropertyChange(mpv_event* event) {
     mpv_event_property* prop = reinterpret_cast<mpv_event_property*>(event->data);
     RadioStream* station = findStationById(event->reply_userdata);
     if (!station) return;
     
-    bool is_active_station = (station->getID() == m_app_state.active_station_idx);
-    bool state_changed = false;
+    if (strcmp(prop->name, "media-title") == 0) {
+        onTitleProperty(prop, *station);
+    } else if (strcmp(prop->name, "audio-bitrate") == 0) {
+        onBitrateProperty(prop, *station);
+    } else if (strcmp(prop->name, "eof-reached") == 0) {
+        onEofProperty(prop, *station);
+    } else if (strcmp(prop->name, "core-idle") == 0) {
+        onCoreIdleProperty(prop, *station);
+    }
+}
 
-    if (strcmp(prop->name, "media-title") == 0 && prop->format == MPV_FORMAT_STRING) {
+void StationManager::onTitleProperty(mpv_event_property* prop, RadioStream& station) {
+    if (prop->format == MPV_FORMAT_STRING) {
         char* title_cstr = *reinterpret_cast<char**>(prop->data);
-        onTitleChanged(*station, title_cstr ? title_cstr : "N/A");
-    } else if (strcmp(prop->name, "audio-bitrate") == 0 && prop->format == MPV_FORMAT_INT64) {
-        int old_bitrate = station->getBitrate();
+        onTitleChanged(station, title_cstr ? title_cstr : "N/A");
+    }
+}
+
+void StationManager::onBitrateProperty(mpv_event_property* prop, RadioStream& station) {
+    if (prop->format == MPV_FORMAT_INT64) {
+        int old_bitrate = station.getBitrate();
         int new_bitrate = static_cast<int>(*reinterpret_cast<int64_t*>(prop->data) / 1000);
-        station->setBitrate(new_bitrate);
-        // Only trigger redraw for bitrate changes on the ACTIVE station to prevent background flicker
+        station.setBitrate(new_bitrate);
+        
+        bool is_active_station = (station.getID() == m_app_state.active_station_idx);
         if (is_active_station && std::abs(new_bitrate - old_bitrate) > BITRATE_REDRAW_THRESHOLD) {
-            state_changed = true;
-        }
-    } else if (strcmp(prop->name, "eof-reached") == 0 && prop->format == MPV_FORMAT_FLAG) {
-        if (*reinterpret_cast<int*>(prop->data)) {
-            onStreamEof(*station);
-        }
-    } else if (strcmp(prop->name, "core-idle") == 0 && prop->format == MPV_FORMAT_FLAG) {
-        bool is_idle = *reinterpret_cast<int*>(prop->data);
-        if (station->isBuffering() != is_idle) {
-            station->setBuffering(is_idle);
-            // Always redraw on a buffering change to update the status icon (e.g., 🤔)
-            state_changed = true;
+            m_app_state.needs_redraw = true;
         }
     }
+}
 
-    if (state_changed) {
-        m_app_state.needs_redraw = true;
+void StationManager::onEofProperty(mpv_event_property* prop, RadioStream& station) {
+    if (prop->format == MPV_FORMAT_FLAG && *reinterpret_cast<int*>(prop->data)) {
+        onStreamEof(station);
+    }
+}
+
+void StationManager::onCoreIdleProperty(mpv_event_property* prop, RadioStream& station) {
+    if (prop->format == MPV_FORMAT_FLAG) {
+        bool is_idle = *reinterpret_cast<int*>(prop->data);
+        if (station.isBuffering() != is_idle) {
+            station.setBuffering(is_idle);
+            m_app_state.needs_redraw = true;
+        }
     }
 }

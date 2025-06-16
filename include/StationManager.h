@@ -12,6 +12,8 @@
 
 // Forward declaration
 class AppState;
+struct mpv_event;
+struct mpv_event_property;
 
 class StationManager {
 public:
@@ -32,22 +34,27 @@ public:
 
 private:
   void mpvEventLoop();
-  void handleMpvEvent(struct mpv_event* event);
   
+  // --- NEW: MPV Event Handler Helpers ---
+  void handleMpvEvent(mpv_event* event);
+  void handlePropertyChange(mpv_event* event);
+  void onTitleProperty(mpv_event_property* prop, RadioStream& station);
+  void onBitrateProperty(mpv_event_property* prop, RadioStream& station);
+  void onEofProperty(mpv_event_property* prop, RadioStream& station);
+  void onCoreIdleProperty(mpv_event_property* prop, RadioStream& station);
+
+  // --- Existing Helpers ---
   void onTitleChanged(RadioStream& station, const std::string& new_title);
   void onStreamEof(RadioStream& station);
-
   void fadeAudio(RadioStream& station, double from_vol, double to_vol, int duration_ms);
   RadioStream* findStationById(int station_id);
   bool contains_ci(const std::string& haystack, const std::string& needle);
-
-  void cleanupFinishedThreads(); // New private helper function
+  void cleanupFinishedThreads();
 
   std::vector<RadioStream> m_stations;
   AppState& m_app_state;
   std::thread m_mpv_event_thread;
 
-  // --- NEW MEMBERS FOR MANAGED FADE THREADS ---
   std::vector<std::jthread> m_fade_threads;
   std::mutex m_fade_threads_mutex;
 };

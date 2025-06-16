@@ -148,63 +148,22 @@ void RadioPlayer::handleInput(int ch) {
         return;
     }
 
-    const auto& stations = m_station_manager->getStations();
-    int old_idx = m_app_state->active_station_idx;
-    int new_idx = old_idx;
-
     switch (ch) {
-        case KEY_UP:
-            if (m_app_state->active_panel == ActivePanel::STATIONS) {
-                new_idx = (old_idx > 0) ? old_idx - 1 : static_cast<int>(stations.size()) - 1;
-                m_station_manager->switchStation(old_idx, new_idx);
-                m_app_state->active_station_idx = new_idx;
-                m_app_state->history_scroll_offset = 0;
-            } else { // HISTORY
-                if (m_app_state->history_scroll_offset > 0) m_app_state->history_scroll_offset--;
-            }
-            break;
-        case KEY_DOWN:
-            if (m_app_state->active_panel == ActivePanel::STATIONS) {
-                new_idx = (old_idx < static_cast<int>(stations.size()) - 1) ? old_idx + 1 : 0;
-                m_station_manager->switchStation(old_idx, new_idx);
-                m_app_state->active_station_idx = new_idx;
-                m_app_state->history_scroll_offset = 0;
-            } else { // HISTORY
-                const auto& current_station_name = stations[old_idx].getName();
-                size_t history_size = m_app_state->getStationHistorySize(current_station_name);
-                if (history_size > 0 && m_app_state->history_scroll_offset < (int)history_size - 1) {
-                    m_app_state->history_scroll_offset++;
-                }
-            }
-            break;
-        case '\t':
-            m_app_state->active_panel = (m_app_state->active_panel == ActivePanel::STATIONS) ? ActivePanel::HISTORY : ActivePanel::STATIONS;
-            break;
-        case '\n': case '\r': case KEY_ENTER:
-            m_station_manager->toggleMuteStation(old_idx);
-            break;
-        case 's': case 'S':
-            toggleSmallMode();
-            break;
-        case 'f': case 'F':
-            m_station_manager->toggleFavorite(old_idx);
-            break;
-        case 'd': case 'D':
-            m_station_manager->toggleAudioDucking(old_idx);
-            break;
-        case 'c': case 'C':
-            m_app_state->copy_mode_active = true;
-            m_app_state->copy_mode_start_time = std::chrono::steady_clock::now();
-            m_ui->setInputTimeout(COPY_MODE_REFRESH_MS);
-            m_ui->draw(m_station_manager->getStations(), *m_app_state, 
-                       getRemainingSecondsForCurrentStation(), getStationSwitchDuration());
-            m_app_state->songs_copied++; // <-- INCREMENT COPY COUNTER
-            break;
-        case 'q': case 'Q':
-            m_app_state->quit_flag = true;
-            break;
+        case KEY_UP:        onUpArrow();            break;
+        case KEY_DOWN:      onDownArrow();          break;
+        case '\n':
+        case '\r':
+        case KEY_ENTER:     onEnter();              break;
+        case 's': case 'S': onToggleSmallMode();    break;
+        case 'f': case 'F': onToggleFavorite();     break;
+        case 'd': case 'D': onToggleDucking();      break;
+        case 'c': case 'C': onCopyMode();           break;
+        case 'q': case 'Q': onQuit();               break;
+        case '\t':          onSwitchPanel();        break;
+        default:            return; // No redraw needed for unhandled keys
     }
     
+    // Most actions require a redraw, except for Copy Mode which handles its own draw call.
     if (ch != 'c' && ch != 'C') {
        m_app_state->needs_redraw = true;
     }
@@ -223,7 +182,41 @@ int RadioPlayer::getRemainingSecondsForCurrentStation() {
     return std::max(0, getStationSwitchDuration() - static_cast<int>(elapsed.count()));
 }
 
-void RadioPlayer::toggleSmallMode() {
+void RadioPlayer::onUpArrow() {
+    const auto& stations = m_station_manager->getStations();
+    int old_idx = m_app_state->active_station_idx;
+    if (m_app_state->active_panel == ActivePanel::STATIONS) {
+        int new_idx = (old_idx > 0) ? old_idx - 1 : static_cast<int>(stations.size()) - 1;
+        m_station_manager->switchStation(old_idx, new_idx);
+        m_app_state->active_station_idx = new_idx;
+        m_app_state->history_scroll_offset = 0;
+    } else { // HISTORY
+        if (m_app_state->history_scroll_offset > 0) m_app_state->history_scroll_offset--;
+    }
+}
+
+void RadioPlayer::onDownArrow() {
+    const auto& stations = m_station_manager->getStations();
+    int old_idx = m_app_state->active_station_idx;
+    if (m_app_state->active_panel == ActivePanel::STATIONS) {
+        int new_idx = (old_idx < static_cast<int>(stations.size()) - 1) ? old_idx + 1 : 0;
+        m_station_manager->switchStation(old_idx, new_idx);
+        m_app_state->active_station_idx = new_idx;
+        m_app_state->history_scroll_offset = 0;
+    } else { // HISTORY
+        const auto& current_station_name = stations[old_idx].getName();
+        size_t history_size = m_app_state->getStationHistorySize(current_station_name);
+        if (history_size > 0 && m_app_state->history_scroll_offset < (int)history_size - 1) {
+            m_app_state->history_scroll_offset++;
+        }
+    }
+}
+
+void RadioPlayer::onEnter() {
+    m_station_manager->toggleMuteStation(m_app_state->active_station_idx);
+}
+
+void RadioPlayer::onToggleSmallMode() {
     m_app_state->small_mode_active = !m_app_state->small_mode_active;
     if (m_app_state->small_mode_active) {
         m_ui->setInputTimeout(DISCOVERY_MODE_REFRESH_MS);
@@ -241,4 +234,29 @@ void RadioPlayer::toggleSmallMode() {
     } else {
         m_ui->setInputTimeout(NORMAL_MODE_REFRESH_MS);
     }
+}
+
+void RadioPlayer::onToggleFavorite() {
+    m_station_manager->toggleFavorite(m_app_state->active_station_idx);
+}
+
+void RadioPlayer::onToggleDucking() {
+    m_station_manager->toggleAudioDucking(m_app_state->active_station_idx);
+}
+
+void RadioPlayer::onCopyMode() {
+    m_app_state->copy_mode_active = true;
+    m_app_state->copy_mode_start_time = std::chrono::steady_clock::now();
+    m_ui->setInputTimeout(COPY_MODE_REFRESH_MS);
+    m_ui->draw(m_station_manager->getStations(), *m_app_state, 
+               getRemainingSecondsForCurrentStation(), getStationSwitchDuration());
+    m_app_state->songs_copied++;
+}
+
+void RadioPlayer::onQuit() {
+    m_app_state->quit_flag = true;
+}
+
+void RadioPlayer::onSwitchPanel() {
+    m_app_state->active_panel = (m_app_state->active_panel == ActivePanel::STATIONS) ? ActivePanel::HISTORY : ActivePanel::STATIONS;
 }
