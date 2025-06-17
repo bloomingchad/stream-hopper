@@ -14,8 +14,10 @@
 #include <sstream>
 #include "nlohmann/json.hpp"
 
-#define COMPACT_MODE_WIDTH 80
-#define DEFAULT_INPUT_TIMEOUT 100 // Default responsiveness
+namespace {
+    constexpr int COMPACT_MODE_WIDTH = 80;
+    constexpr int DEFAULT_INPUT_TIMEOUT = 100;
+}
 
 std::string truncate_string(const std::string& str, size_t width) {
     if (width > 3 && str.length() > width) {

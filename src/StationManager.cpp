@@ -13,10 +13,11 @@
 #include <mpv/client.h> // For mpv_event definitions
 
 
-// Constants from the old RadioPlayer
-#define FADE_TIME_MS 900
-#define DUCK_VOLUME 40.0
-#define BITRATE_REDRAW_THRESHOLD 2
+namespace {
+    constexpr int FADE_TIME_MS = 900;
+    constexpr double DUCK_VOLUME = 40.0;
+    constexpr int BITRATE_REDRAW_THRESHOLD = 2;
+}
 
 StationManager::StationManager(const std::vector<std::pair<std::string, std::vector<std::string>>>& station_data, AppState& app_state)
     : m_app_state(app_state) {
