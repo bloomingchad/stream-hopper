@@ -8,9 +8,9 @@
 RadioStream::RadioStream(int id, std::string name, std::string url)
     : m_id(id), m_name(std::move(name)), m_url(std::move(url)), m_mpv_instance(),
       m_is_initialized(false),
-      m_current_title("..."),
-      m_bitrate(0), m_is_muted(false), m_is_ducked(false),
-      m_current_volume(0.0),
+      m_current_title("..."), m_bitrate(0),
+      m_playback_state(PlaybackState::Playing),
+      m_current_volume(0.0), 
       m_pre_mute_volume(100.0), m_is_fading(false), m_target_volume(0.0), m_is_favorite(false),
       m_has_logged_first_song(false), m_is_buffering(false), 
       m_mute_start_time(std::nullopt) {}
@@ -22,8 +22,7 @@ RadioStream::RadioStream(RadioStream&& other) noexcept
       m_mpv_instance(std::move(other.m_mpv_instance)),
       m_is_initialized(other.m_is_initialized.load()),
       m_bitrate(other.m_bitrate.load()),
-      m_is_muted(other.m_is_muted.load()),
-      m_is_ducked(other.m_is_ducked.load()),
+      m_playback_state(other.m_playback_state.load()),
       m_current_volume(other.m_current_volume.load()),
       m_pre_mute_volume(other.m_pre_mute_volume.load()),
       m_is_fading(other.m_is_fading.load()),
@@ -55,8 +54,7 @@ RadioStream& RadioStream::operator=(RadioStream&& other) noexcept
         m_is_initialized.store(other.m_is_initialized.load());
         m_current_title = std::move(other.m_current_title);
         m_bitrate.store(other.m_bitrate.load());
-        m_is_muted.store(other.m_is_muted.load());
-        m_is_ducked.store(other.m_is_ducked.load());
+        m_playback_state.store(other.m_playback_state.load());
         m_current_volume.store(other.m_current_volume.load());
         m_pre_mute_volume.store(other.m_pre_mute_volume.load());
         m_is_fading.store(other.m_is_fading.load());
@@ -126,11 +124,8 @@ void RadioStream::setCurrentTitle(const std::string &title) {
 int RadioStream::getBitrate() const { return m_bitrate; }
 void RadioStream::setBitrate(int bitrate) { m_bitrate = bitrate; }
 
-bool RadioStream::isMuted() const { return m_is_muted; }
-void RadioStream::setMuted(bool muted) { m_is_muted = muted; }
-
-bool RadioStream::isDucked() const { return m_is_ducked; }
-void RadioStream::setDucked(bool ducked) { m_is_ducked = ducked; }
+PlaybackState RadioStream::getPlaybackState() const { return m_playback_state; }
+void RadioStream::setPlaybackState(PlaybackState state) { m_playback_state = state; }
 
 double RadioStream::getCurrentVolume() const { return m_current_volume; }
 void RadioStream::setCurrentVolume(double vol) { m_current_volume = vol; }

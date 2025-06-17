@@ -87,12 +87,12 @@ void StationManager::switchStation(int old_idx, int new_idx) {
     if (new_idx < 0 || new_idx >= (int)m_stations.size() || new_idx == old_idx) return;
     
     RadioStream& current_station = m_stations[old_idx];
-    if (!current_station.isMuted()) {
+    if (current_station.getPlaybackState() != PlaybackState::Muted) {
         fadeAudio(current_station, current_station.getCurrentVolume(), 0.0, FADE_TIME_MS);
     }
     
     RadioStream& new_station = m_stations[new_idx];
-    if (!new_station.isMuted()) {
+    if (new_station.getPlaybackState() != PlaybackState::Muted) {
         fadeAudio(new_station, new_station.getCurrentVolume(), 100.0, FADE_TIME_MS);
     }
 
@@ -103,15 +103,15 @@ void StationManager::toggleMuteStation(int station_idx) {
     if (station_idx < 0 || station_idx >= (int)m_stations.size()) return;
     RadioStream& station = m_stations[station_idx];
 
-    if (station.isDucked()) return;
+    if (station.getPlaybackState() == PlaybackState::Ducked) return;
 
-    if (station.isMuted()) {
-        station.setMuted(false);
+    if (station.getPlaybackState() == PlaybackState::Muted) {
+        station.setPlaybackState(PlaybackState::Playing);
         station.resetMuteStartTime();
         fadeAudio(station, station.getCurrentVolume(), station.getPreMuteVolume(), FADE_TIME_MS / 2);
     } else {
-        station.setPreMuteVolume(station.getCurrentVolume());
-        station.setMuted(true);
+        station.setPreMuteVolume(station.getCurrentVolume()); // Save volume before muting
+        station.setPlaybackState(PlaybackState::Muted);
         station.setMuteStartTime();
         fadeAudio(station, station.getCurrentVolume(), 0.0, FADE_TIME_MS / 2);
     }
@@ -121,14 +121,14 @@ void StationManager::toggleAudioDucking(int station_idx) {
     if (station_idx < 0 || station_idx >= (int)m_stations.size()) return;
     RadioStream& station = m_stations[station_idx];
 
-    if (station.isMuted()) return;
+    if (station.getPlaybackState() == PlaybackState::Muted) return;
 
-    if (station.isDucked()) {
-        station.setDucked(false);
+    if (station.getPlaybackState() == PlaybackState::Ducked) {
+        station.setPlaybackState(PlaybackState::Playing);
         fadeAudio(station, station.getCurrentVolume(), station.getPreMuteVolume(), FADE_TIME_MS);
     } else {
-        station.setPreMuteVolume(station.getCurrentVolume());
-        station.setDucked(true);
+        station.setPreMuteVolume(station.getCurrentVolume()); // Save volume before ducking
+        station.setPlaybackState(PlaybackState::Ducked);
         fadeAudio(station, station.getCurrentVolume(), DUCK_VOLUME, FADE_TIME_MS);
     }
 }

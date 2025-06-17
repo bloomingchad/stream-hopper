@@ -97,7 +97,7 @@ void UIManager::draw(const std::vector<RadioStream>& stations, const AppState& a
     double display_vol = 0.0;
     if (!stations.empty()) {
         const auto& active_station = stations[app_state.active_station_idx];
-        display_vol = active_station.isMuted() ? 0.0 : active_station.getCurrentVolume();
+        display_vol = active_station.getPlaybackState() == PlaybackState::Muted ? 0.0 : active_station.getCurrentVolume();
     }
     
     draw_header_bar(width, display_vol);
@@ -206,9 +206,13 @@ void UIManager::draw_compact_mode(int width, int height, const std::vector<Radio
         std::string status_icon = "  ";
         if(is_active) {
             if (station.isBuffering()) status_icon = "🤔 ";
-            else if (station.isDucked()) status_icon = "🎧 "; // <-- ADDED
-            else if (station.isMuted()) status_icon = "🔇 ";
-            else status_icon = "▶️ ";
+            else {
+                switch(station.getPlaybackState()) {
+                    case PlaybackState::Playing: status_icon = "▶️ "; break;
+                    case PlaybackState::Muted:   status_icon = "🔇 "; break;
+                    case PlaybackState::Ducked:  status_icon = "🎧 "; break;
+                }
+            }
         }
         
         std::string fav_icon = station.isFavorite() ? "⭐ " : " ";
@@ -269,12 +273,17 @@ void UIManager::draw_stations_panel(int y, int x, int w, int h, const std::vecto
         
         std::string status_icon;
         if (station.isBuffering()) {
-            status_icon = "🤔 ";
-        } else if (station.isDucked()) { // <-- ADDED
-            status_icon = "🎧 ";
-        } else if (station.isMuted()) {
-            status_icon = "🔇 ";
-        } else if (station.getCurrentVolume() > 0) {
+            status_icon = "🤔 "; 
+        } else if (station.getCurrentVolume() > 0.1) {
+            switch(station.getPlaybackState()) {
+                case PlaybackState::Playing: status_icon = "▶️ "; break;
+                case PlaybackState::Muted:   status_icon = "🔇 "; break;
+                case PlaybackState::Ducked:  status_icon = "🎧 "; break;
+            }
+        }
+        else if (station.getPlaybackState() == PlaybackState::Muted) { // Show mute icon even if volume is 0
+             status_icon = "🔇 ";
+        } else if (station.getCurrentVolume() > 0) { // Should not be needed but as a fallback
             status_icon = "▶️ ";
         } else {
             status_icon = "   ";
@@ -346,7 +355,8 @@ void UIManager::draw_now_playing_panel(int y, int x, int w, int h, const RadioSt
     } else {
         int bar_width = inner_w - 12; 
         if (bar_width > 0) {
-            double vol_percent = (station.isMuted() ? 0.0 : station.getCurrentVolume()) / 100.0;
+            bool is_muted = station.getPlaybackState() == PlaybackState::Muted;
+            double vol_percent = (is_muted ? 0.0 : station.getCurrentVolume()) / 100.0;
             int filled_width = static_cast<int>(vol_percent * bar_width);
             
             mvwprintw(stdscr, y + 1, x + 3, "🔊 [");
@@ -355,7 +365,7 @@ void UIManager::draw_now_playing_panel(int y, int x, int w, int h, const RadioSt
             attroff(COLOR_PAIR(2));
             for(int i = filled_width; i < bar_width; ++i) mvwaddch(stdscr, y + 1, x + 6 + i, ACS_CKBOARD);
             mvwprintw(stdscr, y + 1, x + 6 + bar_width, "]");
-            mvwprintw(stdscr, y + 1, x + 8 + bar_width, "%.0f%%", station.isMuted() ? 0.0 : station.getCurrentVolume());
+            mvwprintw(stdscr, y + 1, x + 8 + bar_width, "%.0f%%", is_muted ? 0.0 : station.getCurrentVolume());
         }
     }
 }

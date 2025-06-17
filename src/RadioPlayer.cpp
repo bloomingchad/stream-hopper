@@ -46,7 +46,7 @@ RadioPlayer::~RadioPlayer() {
         const RadioStream& active_station = stations[m_app_state->active_station_idx];
         auto mute_start_time = active_station.getMuteStartTime();
 
-        if (active_station.isMuted() && mute_start_time.has_value()) {
+        if (active_station.getPlaybackState() == PlaybackState::Muted && mute_start_time.has_value()) {
             auto mute_duration = std::chrono::duration_cast<std::chrono::seconds>(end_time - mute_start_time.value());
             if (mute_duration.count() >= FORGOTTEN_MUTE_SECONDS) {
                 forgot_mute = true;
@@ -127,7 +127,7 @@ void RadioPlayer::updateState() {
     // Forgotten mute check during runtime
     if (!m_app_state->small_mode_active && !stations.empty()) {
         const RadioStream& active_station = stations[m_app_state->active_station_idx];
-        if (active_station.isMuted()) {
+        if (active_station.getPlaybackState() == PlaybackState::Muted) {
             auto mute_start = active_station.getMuteStartTime();
             if (mute_start.has_value()) {
                 auto now = std::chrono::steady_clock::now();
@@ -225,8 +225,9 @@ void RadioPlayer::onToggleSmallMode() {
         if(!stations.empty()) {
             const RadioStream& current_station = stations[m_app_state->active_station_idx];
             // Un-mute or restore volume when entering discovery mode
-            if (current_station.isMuted() || current_station.isDucked()) {
-                m_station_manager->toggleMuteStation(m_app_state->active_station_idx);
+            PlaybackState current_state = current_station.getPlaybackState();
+            if (current_state == PlaybackState::Muted || current_state == PlaybackState::Ducked) {
+                m_station_manager->toggleMuteStation(m_app_state->active_station_idx); // This will always unmute/unduck
             } else if (current_station.getCurrentVolume() < 50.0) {
                  m_station_manager->switchStation(m_app_state->active_station_idx, m_app_state->active_station_idx); // "Switch" to self to restore volume
             }

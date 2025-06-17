@@ -12,6 +12,8 @@
 // Forward declare to avoid including mpv/client.h in this header
 struct mpv_handle;
 
+enum class PlaybackState { Playing, Muted, Ducked };
+
 class RadioStream {
 public:
     RadioStream(int id, std::string name, std::string url);
@@ -39,11 +41,8 @@ public:
     int getBitrate() const;
     void setBitrate(int bitrate);
 
-    bool isMuted() const;
-    void setMuted(bool muted);
-
-    bool isDucked() const;
-    void setDucked(bool ducked);
+    PlaybackState getPlaybackState() const;
+    void setPlaybackState(PlaybackState state);
 
     double getCurrentVolume() const;
     void setCurrentVolume(double vol);
@@ -84,8 +83,7 @@ private:
     std::string m_current_title;
 
     std::atomic<int> m_bitrate;
-    std::atomic<bool> m_is_muted;
-    std::atomic<bool> m_is_ducked;
+    std::atomic<PlaybackState> m_playback_state;
     std::atomic<double> m_current_volume;
     std::atomic<double> m_pre_mute_volume;
     std::atomic<bool> m_is_fading;
