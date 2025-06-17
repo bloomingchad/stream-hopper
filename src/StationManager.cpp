@@ -19,7 +19,8 @@ namespace {
 }
 
 StationManager::StationManager(const std::vector<std::pair<std::string, std::vector<std::string>>>& station_data, AppState& app_state)
-    : m_app_state(app_state) {
+    : m_app_state(app_state),
+      m_wakeup_flag(false) {
 
     if (station_data.empty()) {
         throw std::runtime_error("No radio stations provided.");
@@ -39,6 +40,9 @@ StationManager::StationManager(const std::vector<std::pair<std::string, std::vec
     for (int i = 0; i < static_cast<int>(m_stations.size()); ++i) {
         double initial_volume = (i == m_app_state.active_station_idx) ? 100.0 : 0.0;
         m_stations[i].initialize(initial_volume);
+        if (m_stations[i].getMpvHandle()) {
+            mpv_set_wakeup_callback(m_stations[i].getMpvHandle(), mpv_wakeup_cb, this);
+        }
     }
 
     // Ensure history is initialized for all stations
@@ -73,6 +77,7 @@ void StationManager::stopEventLoop() {
     if (m_mpv_event_thread.joinable()) {
         // Set the quit flag which the loop checks
         m_app_state.quit_flag = true; 
+        wakeupEventLoop(); // Wake up the thread so it can see the quit flag
         m_mpv_event_thread.join();
     }
 }
@@ -96,6 +101,7 @@ void StationManager::switchStation(int old_idx, int new_idx) {
         fadeAudio(new_station, new_station.getCurrentVolume(), 100.0, FADE_TIME_MS);
     }
 
+    wakeupEventLoop();
     m_app_state.session_switches++; // <-- INCREMENT SWITCH COUNTER
 }
 
@@ -115,6 +121,7 @@ void StationManager::toggleMuteStation(int station_idx) {
         station.setMuteStartTime();
         fadeAudio(station, station.getCurrentVolume(), 0.0, FADE_TIME_MS / 2);
     }
+    wakeupEventLoop();
 }
 
 void StationManager::toggleAudioDucking(int station_idx) {
@@ -131,15 +138,27 @@ void StationManager::toggleAudioDucking(int station_idx) {
         station.setPlaybackState(PlaybackState::Ducked);
         fadeAudio(station, station.getCurrentVolume(), DUCK_VOLUME, FADE_TIME_MS);
     }
+    wakeupEventLoop();
 }
 
 void StationManager::toggleFavorite(int station_idx) {
     if (station_idx >= 0 && station_idx < (int)m_stations.size()) {
         m_stations[station_idx].toggleFavorite();
+        wakeupEventLoop();
     }
 }
 
 // --- Private Implementation ---
+
+void StationManager::wakeupEventLoop() {
+    m_wakeup_flag = true;
+    m_event_cond.notify_one();
+}
+
+void StationManager::mpv_wakeup_cb(void* ctx) {
+    StationManager* self = static_cast<StationManager*>(ctx);
+    self->wakeupEventLoop();
+}
 
 void StationManager::cleanupFinishedThreads() {
     std::lock_guard<std::mutex> lock(m_fade_threads_mutex);
@@ -169,7 +188,7 @@ void StationManager::fadeAudio(RadioStream& station, double from_vol, double to_
             if(station.getMpvHandle()) { // Safety check
                 mpv_set_property_async(station.getMpvHandle(), 0, "volume", MPV_FORMAT_DOUBLE, &clamped_vol);
             }
-
+            wakeupEventLoop(); // Wake up UI thread to show fade animation
             std::this_thread::sleep_for(std::chrono::milliseconds(step_delay_ms));
         }
 
@@ -182,6 +201,7 @@ void StationManager::fadeAudio(RadioStream& station, double from_vol, double to_
             }
         }
         station.setFading(false);
+        wakeupEventLoop(); // Final wakeup for redraw
     });
 
     // Move the thread into our managed vector
@@ -190,21 +210,29 @@ void StationManager::fadeAudio(RadioStream& station, double from_vol, double to_
 }
 
 void StationManager::mpvEventLoop() {
-    while (!m_app_state.quit_flag) {
-        bool event_found = false;
-        // The check for m_app_state.quit_flag must be inside the loop
-        // for it to terminate correctly when stopEventLoop() is called.
-        for (auto& station : m_stations) {
-            if (m_app_state.quit_flag) break;
-            if (!station.getMpvHandle()) continue;
-            mpv_event* event = mpv_wait_event(station.getMpvHandle(), 0.001);
-            if (event && event->event_id != MPV_EVENT_NONE) {
-                handleMpvEvent(event);
-                event_found = true;
-            }
+    while (!m_app_state.quit_flag.load()) {
+        {
+            std::unique_lock<std::mutex> lock(m_event_mutex);
+            // Wait until the wakeup flag is set.
+            m_event_cond.wait(lock, [this]{ return m_wakeup_flag.load(); });
+            // Reset the flag now that we're awake.
+            m_wakeup_flag = false;
         }
-        if (!event_found && !m_app_state.quit_flag) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+        if (m_app_state.quit_flag.load()) break;
+
+        // Process all available events from all clients without waiting.
+        bool events_pending = true;
+        while(events_pending) {
+            events_pending = false;
+            for(auto& station : m_stations) {
+                // mpv_wait_event with a 0 timeout is a non-blocking check.
+                mpv_event *event = mpv_wait_event(station.getMpvHandle(), 0);
+                if (event->event_id == MPV_EVENT_NONE) continue;
+
+                handleMpvEvent(event);
+                events_pending = true; // If we handled one, there might be more in the queue.
+            }
         }
     }
 }

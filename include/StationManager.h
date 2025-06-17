@@ -6,6 +6,7 @@
 #include <thread>
 #include <memory>
 #include <atomic>
+#include <condition_variable>
 #include <mutex> // For protecting the thread vector
 
 #include "RadioStream.h"
@@ -32,6 +33,10 @@ public:
   // Getters for UI
   const std::vector<RadioStream>& getStations() const;
 
+  // --- NEW: Wakeup Mechanism ---
+  // Wakes up the event loop thread to process a state change.
+  void wakeupEventLoop();
+
 private:
   void mpvEventLoop();
   
@@ -54,6 +59,12 @@ private:
   std::vector<RadioStream> m_stations;
   AppState& m_app_state;
   std::thread m_mpv_event_thread;
+
+  // --- NEW: Event Loop Synchronization ---
+  std::mutex m_event_mutex;
+  std::condition_variable m_event_cond;
+  std::atomic<bool> m_wakeup_flag;
+  static void mpv_wakeup_cb(void* ctx);
 
   std::vector<std::thread> m_fade_threads;
   std::mutex m_fade_threads_mutex;
