@@ -35,7 +35,7 @@ const std::vector<std::pair<std::string, std::vector<std::string>>> station_data
     //{"bigFM DanceHall", {"https://audiotainment-sw.streamabc.net/atsw-dancehall-aac-128-5420319"}},
     //{"bigFM GrooveNight", {"https://audiotainment-sw.streamabc.net/atsw-groovenight-aac-128-5346495"}},
     {"BreakZ", {
-        "https://rautemusik.stream43.radiohost.de/breakz",
+        "https://breakz-high.rautemusik.fm/stream.mp3",
         "http://breakz-aacp.rautemusik.fm/listen.pls"
     }},
     //{"1.fm DeepHouse", {"http://strm112.1.fm/deephouse_mobile_mp3"}},

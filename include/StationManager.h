@@ -3,7 +3,7 @@
 
 #include <string>
 #include <vector>
-#include <thread> // Now using std::jthread
+#include <thread>
 #include <memory>
 #include <atomic>
 #include <mutex> // For protecting the thread vector
@@ -55,7 +55,7 @@ private:
   AppState& m_app_state;
   std::thread m_mpv_event_thread;
 
-  std::vector<std::jthread> m_fade_threads;
+  std::vector<std::thread> m_fade_threads;
   std::mutex m_fade_threads_mutex;
 };
 

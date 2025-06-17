@@ -9,7 +9,6 @@
 #include <cstring>
 #include <ctime>
 #include <cmath> // For std::abs
-#include <stop_token> // For std::jthread
 #include <mpv/client.h> // For mpv_event definitions
 
 
@@ -52,18 +51,13 @@ StationManager::~StationManager() {
     // Gracefully stop all threads before saving state
     stopEventLoop(); // Stops the main mpv event loop
     
-    // --- NEW: Graceful shutdown for fade threads ---
-    {
-        std::lock_guard<std::mutex> lock(m_fade_threads_mutex);
-        for (auto& t : m_fade_threads) {
-            t.request_stop(); // Signal cancellation
+    // Join all fade threads before exiting. The m_app_state.quit_flag
+    // (set in RadioPlayer's destructor) will cause them to terminate quickly.
+    for (auto& t : m_fade_threads) {
+        if (t.joinable()) {
+            t.join();
         }
-    } // Mutex released
-
-    // The jthread destructors in the clear() call will now join.
-    // The joins are fast because the threads will exit their loops.
-    cleanupFinishedThreads(); // Final cleanup
-    // --- END NEW ---
+    }
 
     m_app_state.saveFavorites(m_stations);
     m_app_state.saveSession(m_stations);
@@ -149,31 +143,23 @@ void StationManager::toggleFavorite(int station_idx) {
 
 void StationManager::cleanupFinishedThreads() {
     std::lock_guard<std::mutex> lock(m_fade_threads_mutex);
-    // C++20 Ranges-based erase_if would be cleaner, but this is more portable for now
-    m_fade_threads.erase(
-        std::remove_if(m_fade_threads.begin(), m_fade_threads.end(), 
-            [](const std::jthread& t) {
-                return !t.joinable(); 
-            }),
-        m_fade_threads.end()
-    );
 }
 
 void StationManager::fadeAudio(RadioStream& station, double from_vol, double to_vol, int duration_ms) {
-    cleanupFinishedThreads(); // Prune any completed threads before adding a new one
+    // cleanupFinishedThreads(); // Disabling pruning to avoid blocking UI. See function comment.
 
     station.setFading(true);
     station.setTargetVolume(to_vol);
 
-    std::jthread fade_worker([&station, from_vol, to_vol, duration_ms](std::stop_token token) {
+    std::thread fade_worker([this, &station, from_vol, to_vol, duration_ms]() {
         const int steps = 50;
         const int step_delay_ms = duration_ms > 0 ? duration_ms / steps : 0;
         const double vol_step = (steps > 0) ? (to_vol - from_vol) / steps : (to_vol - from_vol);
         double current_vol = from_vol;
 
         for (int i = 0; i < steps; ++i) {
-            if (token.stop_requested()) {
-                station.setFading(false); // Reset state before exiting
+            // Exit if app is quitting or if another fade has superseded this one.
+            if (m_app_state.quit_flag || std::abs(station.getTargetVolume() - to_vol) > 0.01) {
                 return;
             }
 
@@ -187,7 +173,8 @@ void StationManager::fadeAudio(RadioStream& station, double from_vol, double to_
             std::this_thread::sleep_for(std::chrono::milliseconds(step_delay_ms));
         }
 
-        if (!token.stop_requested()) {
+        // Only set the final state if this thread completed its fade successfully.
+        if (!m_app_state.quit_flag && std::abs(station.getTargetVolume() - to_vol) <= 0.01) {
             station.setCurrentVolume(to_vol);
             double final_vol = std::max(0.0, std::min(100.0, to_vol));
             if(station.getMpvHandle()) { // Safety check
