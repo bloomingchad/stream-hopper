@@ -17,7 +17,13 @@ namespace {
     constexpr int FADE_TIME_MS = 900;
     constexpr double DUCK_VOLUME = 40.0;
     constexpr int BITRATE_REDRAW_THRESHOLD = 2;
-    constexpr int BALANCED_MODE_WINDOW_SIZE = 3;
+
+    // Anticipatory Preloading Constants
+    constexpr auto ACCEL_TIME_WINDOW = std::chrono::milliseconds(500);
+    constexpr int ACCEL_EVENT_THRESHOLD = 3; // 3+ events to trigger
+    constexpr int PRELOAD_DEFAULT = 3;
+    constexpr int PRELOAD_EXTRA = 3; // Add this many stations
+    constexpr int PRELOAD_REDUCTION = 2; // Reduce opposite side by this
 }
 
 StationManager::StationManager(const std::vector<std::pair<std::string, std::vector<std::string>>>& station_data, AppState& app_state)
@@ -89,6 +95,79 @@ void StationManager::switchStation(int old_idx, int new_idx) {
     }
 }
 
+void StationManager::updateActiveWindow() {
+    int station_count = static_cast<int>(m_stations.size());
+    int active_idx = m_app_state.active_station_idx;
+
+    int preload_up = PRELOAD_DEFAULT;
+    int preload_down = PRELOAD_DEFAULT;
+
+    // Acceleration Detection Logic
+    if (m_app_state.hopper_mode == HopperMode::BALANCED && !m_app_state.nav_history.empty()) {
+        const auto& last_event = m_app_state.nav_history.back();
+        NavDirection current_dir = last_event.direction;
+        int consecutive_count = 0;
+        auto now = std::chrono::steady_clock::now();
+
+        for (auto it = m_app_state.nav_history.rbegin(); it != m_app_state.nav_history.rend(); ++it) {
+            if (now - it->timestamp > ACCEL_TIME_WINDOW) break;
+            if (it->direction == current_dir) {
+                consecutive_count++;
+            } else {
+                break;
+            }
+        }
+
+        if (consecutive_count >= ACCEL_EVENT_THRESHOLD) {
+            if (current_dir == NavDirection::DOWN) {
+                preload_down = PRELOAD_DEFAULT + PRELOAD_EXTRA;
+                preload_up = std::max(1, PRELOAD_DEFAULT - PRELOAD_REDUCTION);
+            } else { // UP
+                preload_up = PRELOAD_DEFAULT + PRELOAD_EXTRA;
+                preload_down = std::max(1, PRELOAD_DEFAULT - PRELOAD_REDUCTION);
+            }
+        }
+    }
+
+    // Build the target station set
+    std::unordered_set<int> new_active_set;
+    switch (m_app_state.hopper_mode) {
+        case HopperMode::PERFORMANCE:
+            for (int i = 0; i < station_count; ++i) new_active_set.insert(i);
+            break;
+        case HopperMode::FOCUS:
+            new_active_set.insert(active_idx);
+            break;
+        case HopperMode::BALANCED:
+            for (int i = 0; i <= preload_up; ++i) {
+                new_active_set.insert((active_idx - i + station_count) % station_count);
+            }
+            for (int i = 1; i <= preload_down; ++i) {
+                new_active_set.insert((active_idx + i) % station_count);
+            }
+            break;
+    }
+
+    std::lock_guard<std::mutex> lock(m_active_indices_mutex); 
+    
+    for (int i = 0; i < station_count; ++i) {
+        bool should_be_active = new_active_set.count(i);
+        bool is_active = m_active_station_indices.count(i);
+
+        if (should_be_active && !is_active) {
+            requestStationInitialization(i);
+        } else if (!should_be_active && is_active) {
+            requestStationShutdown(i);
+        }
+    }
+
+    RadioStream& new_station = m_stations[active_idx];
+    if (new_station.isInitialized() && new_station.getPlaybackState() != PlaybackState::Muted && new_station.getCurrentVolume() < 99.0) {
+        fadeAudio(new_station, new_station.getCurrentVolume(), 100.0, FADE_TIME_MS);
+    }
+    wakeupEventLoop();
+}
+
 void StationManager::toggleMuteStation(int station_idx) {
     if (station_idx < 0 || station_idx >= (int)m_stations.size()) return;
     RadioStream& station = m_stations[station_idx];
@@ -137,47 +216,6 @@ void StationManager::setHopperMode(HopperMode new_mode) {
     }
 }
 
-void StationManager::updateActiveWindow() {
-    std::unordered_set<int> new_active_set;
-    int station_count = static_cast<int>(m_stations.size());
-    int active_idx = m_app_state.active_station_idx;
-
-    switch (m_app_state.hopper_mode) {
-        case HopperMode::PERFORMANCE:
-            for (int i = 0; i < station_count; ++i) new_active_set.insert(i);
-            break;
-        case HopperMode::FOCUS:
-            new_active_set.insert(active_idx);
-            break;
-        case HopperMode::BALANCED:
-            new_active_set.insert(active_idx);
-            for (int i = 1; i <= BALANCED_MODE_WINDOW_SIZE; ++i) {
-                new_active_set.insert((active_idx + i) % station_count);
-                new_active_set.insert((active_idx - i + station_count) % station_count);
-            }
-            break;
-    }
-
-    std::lock_guard<std::mutex> lock(m_active_indices_mutex); 
-    
-    for (int i = 0; i < station_count; ++i) {
-        bool should_be_active = new_active_set.count(i);
-        bool is_active = m_active_station_indices.count(i);
-
-        if (should_be_active && !is_active) {
-            requestStationInitialization(i);
-        } else if (!should_be_active && is_active) {
-            requestStationShutdown(i);
-        }
-    }
-
-    RadioStream& new_station = m_stations[active_idx];
-    if (new_station.isInitialized() && new_station.getPlaybackState() != PlaybackState::Muted && new_station.getCurrentVolume() < 99.0) {
-        fadeAudio(new_station, new_station.getCurrentVolume(), 100.0, FADE_TIME_MS);
-    }
-    wakeupEventLoop();
-}
-
 void StationManager::requestStationInitialization(int station_idx) {
     std::lock_guard<std::mutex> lock(m_lifecycle_queue_mutex);
     m_initialization_queue.push_back(station_idx);
@@ -189,11 +227,9 @@ void StationManager::requestStationShutdown(int station_idx) {
 }
 
 void StationManager::processLifecycleRequests() {
-    // Create local copies of the queues to process.
     std::deque<int> initializations_to_process;
     std::deque<int> shutdowns_to_process;
 
-    // --- The Fix: Lock, copy, and immediately unlock ---
     {
         std::lock_guard<std::mutex> lock(m_lifecycle_queue_mutex);
         if (!m_initialization_queue.empty()) {
@@ -202,11 +238,8 @@ void StationManager::processLifecycleRequests() {
         if (!m_shutdown_queue.empty()) {
             shutdowns_to_process.swap(m_shutdown_queue);
         }
-    } // Mutex is released here.
+    }
 
-    // Now, process the requests using the local copies, without holding the lock.
-
-    // Process shutdowns first.
     if (!shutdowns_to_process.empty()) {
         std::lock_guard<std::mutex> index_lock(m_active_indices_mutex);
         for (int station_idx : shutdowns_to_process) {
@@ -217,7 +250,6 @@ void StationManager::processLifecycleRequests() {
         }
     }
     
-    // Process initializations.
     if (!initializations_to_process.empty()) {
         std::lock_guard<std::mutex> index_lock(m_active_indices_mutex);
         for (int station_idx : initializations_to_process) {
@@ -246,9 +278,6 @@ void StationManager::fadeAudio(RadioStream& station, double from_vol, double to_
     if (!station.isInitialized()) return;
     station.setFading(true);
     station.setTargetVolume(to_vol);
-
-    // --- The Fix Part 2 ---
-    // Capture the generation number at the time the thread is created.
     int captured_generation = station.getGeneration();
 
     std::thread fade_worker([this, &station, from_vol, to_vol, duration_ms, captured_generation]() {
@@ -258,8 +287,6 @@ void StationManager::fadeAudio(RadioStream& station, double from_vol, double to_
         double current_vol = from_vol;
 
         for (int i = 0; i < steps; ++i) {
-            // --- The Fix Part 3 ---
-            // The check is now against the captured generation. This is thread-safe.
             if (m_app_state.quit_flag || station.getGeneration() != captured_generation || std::abs(station.getTargetVolume() - to_vol) > 0.01) {
                 return; // The station was shut down or another fade started. Exit.
             }

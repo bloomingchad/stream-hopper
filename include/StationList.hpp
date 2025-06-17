@@ -85,7 +85,10 @@ const std::vector<std::pair<std::string, std::vector<std::string>>> station_data
         "http://79.111.119.111:8000/upliftingtrance", //320
         "http://79.111.119.111:8002/upliftingtrance" //48
     }},
-    {"Regenbogen", {"https://streams.regenbogen.de/"}},
+    {"Regenbogen", {
+        "https://audiotainment-sw.streamabc.net/atsw-regenbogen1028-aac-128-5324158" //128
+        "https://streams.regenbogen.de/", //64? 128, ?
+    }},
     {"RadCap ClubDance", {
         "http://79.111.119.111:8000/clubdance", //320
         "http://79.111.119.111:8002/clubdance" //48

@@ -8,9 +8,17 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include <deque> // For navigation history
 
 // Forward declaration
 class RadioStream;
+
+enum class NavDirection { UP, DOWN }; // For tracking navigation
+
+struct NavEvent {
+    NavDirection direction;
+    std::chrono::steady_clock::time_point timestamp;
+};
 
 enum class HopperMode {
     BALANCED,     // 🍃 Default: Windowed pre-loading
@@ -34,8 +42,11 @@ public:
   int history_scroll_offset;
   std::chrono::steady_clock::time_point copy_mode_start_time;
   std::chrono::steady_clock::time_point small_mode_start_time;
-  HopperMode hopper_mode; // <-- NEW: Current resource management mode
-  std::chrono::steady_clock::time_point last_switch_time; // <-- NEW: For focus mode timer
+  HopperMode hopper_mode;
+  std::chrono::steady_clock::time_point last_switch_time;
+  
+  // --- NEW: Navigation History for Acceleration Detection ---
+  std::deque<NavEvent> nav_history;
 
   // --- Session Statistics ---
   std::chrono::steady_clock::time_point session_start_time;
