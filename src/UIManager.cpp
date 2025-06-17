@@ -2,7 +2,7 @@
 #include "UIManager.h"
 #include "RadioPlayer.h"
 #include "RadioStream.h"
-#include "AppState.h" // <-- ADDED
+#include "AppState.h"
 #include <ncurses.h>
 #include <string>
 #include <vector>
@@ -76,6 +76,7 @@ UIManager::UIManager() : m_station_scroll_offset(0) {
     init_pair(5, COLOR_WHITE, COLOR_BLUE);    // High quality bitrate (background)
     init_pair(6, COLOR_WHITE, COLOR_GREEN);   // Medium quality bitrate (background)
     init_pair(7, COLOR_WHITE, COLOR_YELLOW);  // Low quality bitrate (background)}
+    init_pair(8, COLOR_BLACK, -1); // For A_DIM
 }
 
 UIManager::~UIManager() {
@@ -97,10 +98,12 @@ void UIManager::draw(const std::vector<RadioStream>& stations, const AppState& a
     double display_vol = 0.0;
     if (!stations.empty()) {
         const auto& active_station = stations[app_state.active_station_idx];
-        display_vol = active_station.getPlaybackState() == PlaybackState::Muted ? 0.0 : active_station.getCurrentVolume();
+        if (active_station.isInitialized()) {
+            display_vol = active_station.getPlaybackState() == PlaybackState::Muted ? 0.0 : active_station.getCurrentVolume();
+        }
     }
     
-    draw_header_bar(width, display_vol);
+    draw_header_bar(width, display_vol, app_state);
 
     if (width < COMPACT_MODE_WIDTH) {
         draw_compact_mode(width, height, stations, app_state, remaining_seconds, total_duration);
@@ -117,12 +120,28 @@ int UIManager::getInput() {
     return getch();
 }
 
-void UIManager::draw_header_bar(int width, double current_volume) {
+void UIManager::draw_header_bar(int width, double current_volume, const AppState& app_state) {
     time_t now = time(0);
     tm* ltm = localtime(&now);
     std::stringstream time_ss;
     time_ss << std::put_time(ltm, "%H:%M");
-    std::string full_header = " STREAM HOPPER  |  LIVE  |  🔊 VOL: " + std::to_string((int)current_volume) + "%  |  🕐 " + time_ss.str() + " ";
+    
+    // --- NEW: Dynamic Header based on HopperMode ---
+    std::string mode_str;
+    switch(app_state.hopper_mode) {
+        case HopperMode::BALANCED:
+            mode_str = "🍃 Balanced";
+            break;
+        case HopperMode::PERFORMANCE:
+            mode_str = "🚀 Performance";
+            break;
+        case HopperMode::FOCUS:
+            mode_str = "🎧 Focus";
+            break;
+    }
+
+    std::string full_header = " STREAM HOPPER  |  LIVE  |  " + mode_str + "  |  🔊 VOL: " + std::to_string((int)current_volume) + "%  |  🕐 " + time_ss.str() + " ";
+
     attron(A_REVERSE);
     mvprintw(0, 0, "%s", std::string(width, ' ').c_str());
     mvprintw(0, 1, "%s", truncate_string(full_header, width - 2).c_str());
@@ -136,9 +155,9 @@ void UIManager::draw_footer_bar(int y, int width, bool is_compact, const AppStat
     } else if (app_state.small_mode_active) {
         footer_text = " [S] Exit Discovery   [C] Copy Mode   [Q] Quit ";
     } else if (is_compact) {
-        footer_text = " [Nav] [Tab] Panel [F] Fav [D] Duck [C] Copy [Q] Quit ";
+        footer_text = " [P] Mode [Nav] [Tab] Panel [F] Fav [D] Duck [C] Copy [Q] Quit ";
     } else {
-        footer_text = " [↑↓] Navigate [↵] Mute [D] Duck [⇥] Panel [F] Fav [C] Copy [Q] Quit ";
+        footer_text = " [P] Mode [↑↓] Nav [↵] Mute [D] Duck [⇥] Panel [F] Fav [C] Copy [Q] Quit ";
     }
     
     attron(A_REVERSE);
@@ -182,48 +201,7 @@ void UIManager::draw_compact_mode(int width, int height, const std::vector<Radio
 
     draw_now_playing_panel(2, 1, width - 2, now_playing_h, active_station, app_state.small_mode_active, remaining_seconds, total_duration);
 
-    draw_box(stations_y, 1, width - 2, stations_h, "STATIONS", app_state.active_panel == ActivePanel::STATIONS && !app_state.copy_mode_active);
-    
-    int visible_items = stations_h > 2 ? stations_h - 2 : 0;
-    if (app_state.active_station_idx < m_station_scroll_offset) {
-        m_station_scroll_offset = app_state.active_station_idx;
-    }
-    if (app_state.active_station_idx >= m_station_scroll_offset + visible_items) {
-        m_station_scroll_offset = app_state.active_station_idx - visible_items + 1;
-    }
-
-    for (int i = 0; i < visible_items; ++i) {
-        int station_idx = m_station_scroll_offset + i;
-        if (station_idx >= (int)stations.size()) break;
-
-        const auto& station = stations[station_idx];
-        bool is_active = (station_idx == app_state.active_station_idx);
-        
-        if (is_active && !app_state.copy_mode_active) {
-            attron(A_REVERSE);
-        }
-
-        std::string status_icon = "  ";
-        if(is_active) {
-            if (station.isBuffering()) status_icon = "🤔 ";
-            else {
-                switch(station.getPlaybackState()) {
-                    case PlaybackState::Playing: status_icon = "▶️ "; break;
-                    case PlaybackState::Muted:   status_icon = "🔇 "; break;
-                    case PlaybackState::Ducked:  status_icon = "🎧 "; break;
-                }
-            }
-        }
-        
-        std::string fav_icon = station.isFavorite() ? "⭐ " : " ";
-        std::string line = status_icon + fav_icon + station.getName();
-        
-        mvwprintw(stdscr, stations_y + 1 + i, 3, "%-*s", width - 5, truncate_string(line, width - 6).c_str());
-
-        if (is_active && !app_state.copy_mode_active) {
-            attroff(A_REVERSE);
-        }
-    }
+    draw_stations_panel(stations_y, 1, width - 2, stations_h, stations, app_state, app_state.active_panel == ActivePanel::STATIONS && !app_state.copy_mode_active);
 
     if (history_h > 0) {
         draw_history_panel(history_y, 1, width - 2, history_h, active_station, app_state, app_state.active_panel == ActivePanel::HISTORY && !app_state.copy_mode_active);
@@ -239,7 +217,7 @@ void UIManager::draw_full_mode(int width, int height, const std::vector<RadioStr
     int top_right_h = app_state.small_mode_active ? 7 : 6;
     int bottom_right_h = height - top_right_h - 2;
 
-    draw_stations_panel(1, 0, left_panel_w, height - 2, stations, app_state.active_station_idx, app_state.active_panel == ActivePanel::STATIONS && !app_state.copy_mode_active);
+    draw_stations_panel(1, 0, left_panel_w, height - 2, stations, app_state, app_state.active_panel == ActivePanel::STATIONS && !app_state.copy_mode_active);
     const RadioStream& current_station = stations[app_state.active_station_idx];
     
     draw_now_playing_panel(1, left_panel_w, right_panel_w, top_right_h, current_station, app_state.small_mode_active, remaining_seconds, total_duration);
@@ -248,9 +226,10 @@ void UIManager::draw_full_mode(int width, int height, const std::vector<RadioStr
 }
 
 void UIManager::draw_stations_panel(int y, int x, int w, int h, const std::vector<RadioStream>& stations, 
-                                    int active_station_idx, bool is_focused) {
+                                    const AppState& app_state, bool is_focused) {
     draw_box(y, x, w, h, "STATIONS", is_focused);
     int inner_w = w - 4;
+    int active_station_idx = app_state.active_station_idx;
 
     int visible_items = h > 2 ? h - 2 : 0;
     if (active_station_idx < m_station_scroll_offset) {
@@ -265,36 +244,41 @@ void UIManager::draw_stations_panel(int y, int x, int w, int h, const std::vecto
         if (station_idx >= (int)stations.size()) break;
 
         const auto& station = stations[station_idx];
-        bool is_active = (station_idx == active_station_idx);
+        bool is_selected = (station_idx == active_station_idx);
         
-        if (is_active) {
+        if (is_selected) {
             attron(A_REVERSE);
         }
         
-        std::string status_icon;
-        if (station.isBuffering()) {
-            status_icon = "🤔 "; 
-        } else if (station.getCurrentVolume() > 0.1) {
-            switch(station.getPlaybackState()) {
-                case PlaybackState::Playing: status_icon = "▶️ "; break;
-                case PlaybackState::Muted:   status_icon = "🔇 "; break;
-                case PlaybackState::Ducked:  status_icon = "🎧 "; break;
-            }
+        // --- NEW: Dim station if not initialized (i.e., outside the window) ---
+        if (!station.isInitialized() && !is_selected) {
+            attron(A_DIM);
         }
-        else if (station.getPlaybackState() == PlaybackState::Muted) { // Show mute icon even if volume is 0
-             status_icon = "🔇 ";
-        } else if (station.getCurrentVolume() > 0) { // Should not be needed but as a fallback
-            status_icon = "▶️ ";
-        } else {
-            status_icon = "   ";
+
+        std::string status_icon = "   "; // Default to blank for uninitialized streams
+        if (station.isInitialized()) {
+            if (station.isBuffering()) {
+                status_icon = "🤔 "; 
+            } else if (station.getCurrentVolume() > 0.1) {
+                switch(station.getPlaybackState()) {
+                    case PlaybackState::Playing: status_icon = "▶️ "; break;
+                    case PlaybackState::Muted:   status_icon = "🔇 "; break;
+                    case PlaybackState::Ducked:  status_icon = "🎧 "; break;
+                }
+            } else if (station.getPlaybackState() == PlaybackState::Muted) {
+                 status_icon = "🔇 ";
+            }
         }
         
         std::string fav_icon = station.isFavorite() ? "⭐ " : "  ";
-        
         std::string line = status_icon + fav_icon + station.getName();
         mvwprintw(stdscr, y + 1 + i, x + 2, "%-*s", inner_w + 1, truncate_string(line, inner_w).c_str());
 
-        if (is_active) {
+        // --- NEW: Turn off attributes ---
+        if (!station.isInitialized() && !is_selected) {
+            attroff(A_DIM);
+        }
+        if (is_selected) {
             attroff(A_REVERSE);
         }
     }
@@ -307,13 +291,13 @@ void UIManager::draw_now_playing_panel(int y, int x, int w, int h, const RadioSt
 
     int inner_w = w - 4;
     
-    std::string title = station.isBuffering() ? "Buffering..." : station.getCurrentTitle();
+    std::string title = station.isInitialized() ? (station.isBuffering() ? "Buffering..." : station.getCurrentTitle()) : "...";
     attron(A_BOLD);
     mvwprintw(stdscr, y + 2, x + 3, "%s", truncate_string(title, inner_w - 2).c_str());
     attroff(A_BOLD);
     
     // Draw station name and bitrate on the same line
-    int bitrate = station.getBitrate();
+    int bitrate = station.isInitialized() ? station.getBitrate() : 0;
     std::string bitrate_str;
     if (bitrate > 0) {
         bitrate_str = " " + std::to_string(bitrate) + "k ";
@@ -355,7 +339,7 @@ void UIManager::draw_now_playing_panel(int y, int x, int w, int h, const RadioSt
     } else {
         int bar_width = inner_w - 12; 
         if (bar_width > 0) {
-            bool is_muted = station.getPlaybackState() == PlaybackState::Muted;
+            bool is_muted = !station.isInitialized() || station.getPlaybackState() == PlaybackState::Muted;
             double vol_percent = (is_muted ? 0.0 : station.getCurrentVolume()) / 100.0;
             int filled_width = static_cast<int>(vol_percent * bar_width);
             

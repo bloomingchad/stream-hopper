@@ -24,7 +24,7 @@ private:
     int getRemainingSecondsForCurrentStation();
     int getStationSwitchDuration();
 
-    // --- NEW: Input Handler Helpers ---
+    // --- Input Handler Helpers ---
     void onUpArrow();
     void onDownArrow();
     void onEnter();
@@ -32,6 +32,7 @@ private:
     void onToggleFavorite();
     void onToggleDucking();
     void onCopyMode();
+    void onToggleHopperMode(); // <-- NEW
     void onQuit();
     void onSwitchPanel();
 

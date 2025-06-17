@@ -1,13 +1,13 @@
-// src/RadioStream.cpp
 #include "RadioStream.h"
 #include "Utils.h"
 #include <stdexcept>
 #include <utility>
-#include <mpv/client.h> // Needed for mpv_... functions
+#include <mpv/client.h>
 
 RadioStream::RadioStream(int id, std::string name, std::string url)
     : m_id(id), m_name(std::move(name)), m_url(std::move(url)), m_mpv_instance(),
       m_is_initialized(false),
+      m_generation(0), // <-- NEW
       m_current_title("..."), m_bitrate(0),
       m_playback_state(PlaybackState::Playing),
       m_current_volume(0.0), 
@@ -21,6 +21,7 @@ RadioStream::RadioStream(RadioStream&& other) noexcept
       m_url(std::move(other.m_url)),
       m_mpv_instance(std::move(other.m_mpv_instance)),
       m_is_initialized(other.m_is_initialized.load()),
+      m_generation(other.m_generation.load()), // <-- NEW
       m_bitrate(other.m_bitrate.load()),
       m_playback_state(other.m_playback_state.load()),
       m_current_volume(other.m_current_volume.load()),
@@ -31,7 +32,6 @@ RadioStream::RadioStream(RadioStream&& other) noexcept
       m_has_logged_first_song(other.m_has_logged_first_song.load()),
       m_is_buffering(other.m_is_buffering.load())
 {
-    // Manually move state protected by mutexes
     std::lock_guard<std::mutex> other_title_lock(other.m_title_mutex);
     m_current_title = std::move(other.m_current_title);
     
@@ -42,16 +42,15 @@ RadioStream::RadioStream(RadioStream&& other) noexcept
 RadioStream& RadioStream::operator=(RadioStream&& other) noexcept
 {
     if (this != &other) {
-        // Lock both sets of mutexes to prevent deadlocks
         std::scoped_lock lock(m_title_mutex, other.m_title_mutex, m_mute_time_mutex, other.m_mute_time_mutex);
 
-        // Move all members
         m_id = other.m_id;
         m_name = std::move(other.m_name);
         m_url = std::move(other.m_url);
         m_mpv_instance = std::move(other.m_mpv_instance);
         
         m_is_initialized.store(other.m_is_initialized.load());
+        m_generation.store(other.m_generation.load()); // <-- NEW
         m_current_title = std::move(other.m_current_title);
         m_bitrate.store(other.m_bitrate.load());
         m_playback_state.store(other.m_playback_state.load());
@@ -67,6 +66,28 @@ RadioStream& RadioStream::operator=(RadioStream&& other) noexcept
     return *this;
 }
 
+void RadioStream::shutdown() {
+    if (!m_is_initialized) return;
+
+    // --- The Fix Part 1 ---
+    // Increment the generation. This immediately invalidates all
+    // existing fade threads for this station.
+    m_generation++; 
+    
+    // Now destroy the instance. The destructor of MpvInstance handles it.
+    m_mpv_instance = MpvInstance{};
+
+    // Reset all state variables AFTER destruction.
+    m_is_initialized = false;
+    setCurrentTitle("...");
+    m_bitrate = 0;
+    m_playback_state = PlaybackState::Playing;
+    m_current_volume = 0.0;
+    m_is_fading = false;
+    m_is_buffering = false;
+    m_has_logged_first_song = false;
+}
+
 void RadioStream::initialize(double initial_volume) {
   if (m_is_initialized) return;
 
@@ -76,8 +97,6 @@ void RadioStream::initialize(double initial_volume) {
   if (!mpv) {
       throw std::runtime_error("MpvInstance failed to provide a valid handle for " + m_name);
   }
-  
-  // The MPV configuration block is now handled by MpvInstance::initialize().
   
   check_mpv_error(
       mpv_observe_property(mpv, m_id, "media-title", MPV_FORMAT_STRING),
@@ -105,8 +124,12 @@ void RadioStream::initialize(double initial_volume) {
 }
 
 bool RadioStream::isInitialized() const { return m_is_initialized; }
+int RadioStream::getGeneration() const { return m_generation.load(); } // <-- NEW
 
 int RadioStream::getID() const { return m_id; }
+// ... rest of getters/setters are the same ...
+// I will include them to be safe.
+
 const std::string &RadioStream::getName() const { return m_name; }
 const std::string &RadioStream::getURL() const { return m_url; }
 mpv_handle *RadioStream::getMpvHandle() const { return m_mpv_instance.get(); }

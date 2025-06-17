@@ -1,4 +1,3 @@
-// include/RadioStream.h
 #ifndef RADIOSTREAM_H
 #define RADIOSTREAM_H
 
@@ -7,9 +6,8 @@
 #include <mutex>
 #include <chrono>
 #include <optional>
-#include "MpvInstance.h" // New RAII wrapper
+#include "MpvInstance.h"
 
-// Forward declare to avoid including mpv/client.h in this header
 struct mpv_handle;
 
 enum class PlaybackState { Playing, Muted, Ducked };
@@ -18,8 +16,6 @@ class RadioStream {
 public:
     RadioStream(int id, std::string name, std::string url);
     
-    // Rule of 5: Manually define move operations due to non-movable members
-    // (std::atomic, std::mutex). Let compiler handle destructor.
     ~RadioStream() = default;
     RadioStream(const RadioStream&) = delete;
     RadioStream& operator=(const RadioStream&) = delete;
@@ -27,8 +23,10 @@ public:
     RadioStream& operator=(RadioStream&& other) noexcept;
 
     void initialize(double initial_volume);
+    void shutdown();
 
     bool isInitialized() const;
+    int getGeneration() const; // <-- NEW
 
     int getID() const;
     const std::string& getName() const;
@@ -65,8 +63,6 @@ public:
     bool isBuffering() const;
     void setBuffering(bool buffering);
 
-
-
     std::optional<std::chrono::steady_clock::time_point> getMuteStartTime() const;
     void setMuteStartTime();
     void resetMuteStartTime();
@@ -75,9 +71,10 @@ private:
     int m_id;
     std::string m_name;
     std::string m_url;
-    MpvInstance m_mpv_instance; // Replaces raw mpv_handle*
+    MpvInstance m_mpv_instance;
     
     std::atomic<bool> m_is_initialized;
+    std::atomic<int> m_generation; // <-- NEW: The "kill switch" counter
 
     mutable std::mutex m_title_mutex;
     std::string m_current_title;

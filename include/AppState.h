@@ -12,6 +12,11 @@
 // Forward declaration
 class RadioStream;
 
+enum class HopperMode {
+    BALANCED,     // 🍃 Default: Windowed pre-loading
+    PERFORMANCE,  // 🚀 All stations loaded
+    FOCUS         // 🎧 Only active station loaded
+};
 enum class ActivePanel { STATIONS, HISTORY };
 
 class AppState {
@@ -29,8 +34,10 @@ public:
   int history_scroll_offset;
   std::chrono::steady_clock::time_point copy_mode_start_time;
   std::chrono::steady_clock::time_point small_mode_start_time;
+  HopperMode hopper_mode; // <-- NEW: Current resource management mode
+  std::chrono::steady_clock::time_point last_switch_time; // <-- NEW: For focus mode timer
 
-  // --- NEW: Session Statistics ---
+  // --- Session Statistics ---
   std::chrono::steady_clock::time_point session_start_time;
   std::atomic<int> session_switches;
   std::atomic<int> new_songs_found;
