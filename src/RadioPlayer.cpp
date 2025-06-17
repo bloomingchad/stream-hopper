@@ -38,7 +38,6 @@ RadioPlayer::~RadioPlayer() {
     // Calculate session duration
     auto end_time = std::chrono::steady_clock::now();
     auto duration_seconds = std::chrono::duration_cast<std::chrono::seconds>(end_time - m_app_state->session_start_time).count();
-    long duration_minutes = duration_seconds / 60;
 
     // Check for forgotten mute on exit
     bool forgot_mute = false;
@@ -59,6 +58,7 @@ RadioPlayer::~RadioPlayer() {
     }
 
     if (!forgot_mute) {
+        long duration_minutes = duration_seconds / 60;
         std::cout << "---\n"
                   << "Thank you for using Stream Hopper!\n"
                   << "🎛️ Session Switches: " << m_app_state->session_switches << "\n"
