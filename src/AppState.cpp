@@ -1,6 +1,6 @@
 #include "AppState.h"
 #include <algorithm>
-#include "RadioStream.h" // For persistence logic (now removed, but kept for context if needed)
+#include "RadioStream.h"
 
 using nlohmann::json;
 
@@ -13,7 +13,8 @@ AppState::AppState()
       session_start_time(std::chrono::steady_clock::now()),
       session_switches(0),
       new_songs_found(0),
-      songs_copied(0)
+      songs_copied(0),
+      unsaved_history_count(0) // NEW: Initialize the counter
 {
   m_song_history = std::make_unique<json>(json::object());
 }

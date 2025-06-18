@@ -13,7 +13,7 @@
 #include <deque>
 #include <future>
 #include <variant>
-#include <unordered_set> // <-- FIX: Added missing header
+#include <unordered_set>
 
 //
 // --- The Message Definitions (Actor Model) ---
@@ -26,6 +26,7 @@ namespace Msg {
     struct ToggleFavorite { int station_idx; };
     struct SetHopperMode { HopperMode new_mode; };
     struct UpdateActiveWindow {};
+    struct SaveHistory {}; // NEW: Message to trigger a history save
     struct Shutdown {};
 }
 
@@ -37,6 +38,7 @@ using StationManagerMessage = std::variant<
     Msg::ToggleFavorite,
     Msg::SetHopperMode,
     Msg::UpdateActiveWindow,
+    Msg::SaveHistory, // NEW
     Msg::Shutdown
 >;
 
@@ -63,6 +65,7 @@ private:
     void handle_toggleFavorite(int station_idx);
     void handle_setHopperMode(HopperMode new_mode);
     void handle_updateActiveWindow();
+    void handle_saveHistory(); // NEW: Handler for the message
 
     // --- Private MPV event handlers (called by the actor thread) ---
     void handleMpvEvent(mpv_event* event);

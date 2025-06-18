@@ -20,6 +20,7 @@ namespace {
     constexpr int PRELOAD_DEFAULT = 3;
     constexpr int PRELOAD_EXTRA = 3;
     constexpr int PRELOAD_REDUCTION = 2;
+    constexpr int HISTORY_WRITE_THRESHOLD = 5; // NEW: Write to disk after every 5 new songs
 }
 
 StationManager::StationManager(const std::vector<std::pair<std::string, std::vector<std::string>>>& station_data, AppState& app_state)
@@ -73,7 +74,7 @@ StationManager::~StationManager() {
         }
     }
 
-    // Now it's safe to save, as all threads are stopped.
+    // This now acts as the final "flush" for any unsaved history.
     PersistenceManager persistence;
     persistence.saveHistory(m_app_state.getFullHistory());
     persistence.saveFavorites(m_stations);
@@ -115,6 +116,7 @@ void StationManager::actorLoop() {
             else if constexpr (std::is_same_v<T, Msg::ToggleFavorite>)    { handle_toggleFavorite(arg.station_idx); }
             else if constexpr (std::is_same_v<T, Msg::SetHopperMode>)      { handle_setHopperMode(arg.new_mode); }
             else if constexpr (std::is_same_v<T, Msg::UpdateActiveWindow>) { handle_updateActiveWindow(); }
+            else if constexpr (std::is_same_v<T, Msg::SaveHistory>)       { handle_saveHistory(); } // NEW
             else if constexpr (std::is_same_v<T, Msg::Shutdown>)          { should_quit = true; }
         }, message);
 
@@ -134,7 +136,15 @@ void StationManager::actorLoop() {
     }
 }
 
-// This function now runs exclusively on the actor thread.
+// --- NEW Message Handler ---
+void StationManager::handle_saveHistory() {
+    PersistenceManager persistence;
+    persistence.saveHistory(m_app_state.getFullHistory());
+    // Reset the counter after a successful save
+    m_app_state.unsaved_history_count = 0;
+}
+
+
 void StationManager::pollMpvEvents() {
     bool events_pending = true;
     while(events_pending) {
@@ -151,7 +161,7 @@ void StationManager::pollMpvEvents() {
             mpv_event *event = mpv_wait_event(station.getMpvHandle(), 0);
             if (event->event_id != MPV_EVENT_NONE) {
                 handleMpvEvent(event);
-                events_pending = true; // There might be more events, so loop again
+                events_pending = true;
             }
         }
     }
@@ -382,6 +392,11 @@ void StationManager::onTitleChanged(RadioStream& station, const std::string& new
     m_app_state.new_songs_found++;
     station.setCurrentTitle(new_title);
     m_app_state.needs_redraw = true;
+
+    // --- NEW: Trigger a buffered write if the threshold is reached ---
+    if (++m_app_state.unsaved_history_count >= HISTORY_WRITE_THRESHOLD) {
+        post(Msg::SaveHistory{});
+    }
 }
 
 void StationManager::onStreamEof(RadioStream& station) {

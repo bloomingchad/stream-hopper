@@ -53,6 +53,7 @@ public:
   std::atomic<int> session_switches;
   std::atomic<int> new_songs_found;
   std::atomic<int> songs_copied;
+  std::atomic<int> unsaved_history_count; // NEW: Counter for buffered writes
 
   // --- THREAD-SAFE IN-MEMORY HISTORY MANAGEMENT ---
   void setHistory(nlohmann::json&& history_data);
