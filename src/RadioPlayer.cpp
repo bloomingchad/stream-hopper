@@ -163,6 +163,7 @@ void RadioPlayer::handleInput(int ch) {
         case 'p': case 'P': onToggleHopperMode();   break;
         case 'q': case 'Q': onQuit();               break;
         case '\t':          onSwitchPanel();        break;
+        case KEY_RESIZE:    /* Handled by redraw */ break; // <-- NEW
         default:            return; // No redraw needed for unhandled keys
     }
     
@@ -188,8 +189,6 @@ int RadioPlayer::getRemainingSecondsForCurrentStation() {
 void RadioPlayer::onUpArrow() {
     if (m_app_state->hopper_mode == HopperMode::FOCUS) {
         m_station_manager->setHopperMode(HopperMode::BALANCED);
-        m_app_state->needs_redraw = true;
-        return;
     }
 
     const auto& stations = m_station_manager->getStations();
@@ -214,8 +213,6 @@ void RadioPlayer::onUpArrow() {
 void RadioPlayer::onDownArrow() {
     if (m_app_state->hopper_mode == HopperMode::FOCUS) {
         m_station_manager->setHopperMode(HopperMode::BALANCED);
-        m_app_state->needs_redraw = true;
-        return;
     }
 
     const auto& stations = m_station_manager->getStations();

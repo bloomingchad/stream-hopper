@@ -4,6 +4,7 @@
 
 #include <vector>
 #include <string>
+#include <atomic> // <-- NEW
 
 // Forward declaration
 class RadioStream;
@@ -34,7 +35,7 @@ private:
     void draw_stations_panel(int y, int x, int w, int h, const std::vector<RadioStream>& stations, 
                              const AppState& app_state, bool is_focused);
     
-    void draw_now_playing_panel(int y, int x, int w, int h, const RadioStream& station, bool is_small_mode,
+    void draw_now_playing_panel(int y, int x, int w, int h, const RadioStream& station, bool is_auto_hop_mode,
                                 int remaining_seconds, int total_duration);
     
     void draw_history_panel(int y, int x, int w, int h, const RadioStream& station, 
@@ -43,6 +44,10 @@ private:
     void draw_box(int y, int x, int w, int h, const std::string& title, bool is_focused);
 
     mutable int m_station_scroll_offset;
+
+    // --- NEW: Signal handling for resize ---
+    static std::atomic<bool> s_resize_pending;
+    static void handle_resize(int signum);
 };
 
 #endif // UIMANAGER_H

@@ -12,11 +12,18 @@
 #include <locale.h>
 #include <iomanip>
 #include <sstream>
+#include <csignal> // <-- NEW: For signal handling
 #include "nlohmann/json.hpp"
 
 namespace {
     constexpr int COMPACT_MODE_WIDTH = 80;
     constexpr int DEFAULT_INPUT_TIMEOUT = 100;
+}
+
+std::atomic<bool> UIManager::s_resize_pending = false;
+
+void UIManager::handle_resize(int /* signum */) {
+    s_resize_pending = true;
 }
 
 std::string truncate_string(const std::string& str, size_t width) {
@@ -77,6 +84,8 @@ UIManager::UIManager() : m_station_scroll_offset(0) {
     init_pair(6, COLOR_WHITE, COLOR_GREEN);   // Medium quality bitrate (background)
     init_pair(7, COLOR_WHITE, COLOR_YELLOW);  // Low quality bitrate (background)}
     init_pair(8, COLOR_BLACK, -1); // For A_DIM
+
+    signal(SIGWINCH, UIManager::handle_resize);
 }
 
 UIManager::~UIManager() {
@@ -117,6 +126,12 @@ void UIManager::draw(const std::vector<RadioStream>& stations, const AppState& a
 }
 
 int UIManager::getInput() {
+    if (s_resize_pending.exchange(false)) {
+        // This is a reliable way to tell ncurses to check the new terminal size
+        endwin();
+        refresh();
+        return KEY_RESIZE;
+    }
     return getch();
 }
 
