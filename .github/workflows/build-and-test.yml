@@ -1,0 +1,48 @@
+# .github/workflows/build-and-test.yml
+
+name: Build, Analyze, and Test
+
+on:
+  push:
+    branches: [ "main" ]
+  
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libncurses-dev \
+            libmpv-dev \
+            cppcheck \
+            flawfinder
+
+      - name: Run Cppcheck Static Analysis
+        run: |
+          cppcheck --enable=all --error-exitcode=1 --suppress=missingIncludeSystem --suppress=missingInclude .
+
+      - name: Run Flawfinder Security Scan
+        run: |
+          flawfinder --minlevel=4 src/ include/*.h*
+
+      - name: Build Project with Make
+        run: make -j $(nproc)
+
+      - name: Verify Build Artifact
+        run: |
+          echo "Listing contents of current directory:"
+          ls -l
+          test -f ./build/stream-hopper && echo "Build successful: 'stream-hopper' executable found."
+
+      - name: Run Executable with Simulated Input
+        run: echo 'q' | ./build/stream-hopper
