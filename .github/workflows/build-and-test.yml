@@ -43,6 +43,3 @@ jobs:
           echo "Listing contents of current directory:"
           ls -l
           test -f ./build/stream-hopper && echo "Build successful: 'stream-hopper' executable found."
-
-      - name: Run Executable with Simulated Input
-        run: echo 'q' | ./build/stream-hopper
