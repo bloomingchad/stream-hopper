@@ -54,22 +54,16 @@ public:
   std::atomic<int> new_songs_found;
   std::atomic<int> songs_copied;
 
-  // --- THREAD-SAFE HISTORY MANAGEMENT ---
+  // --- THREAD-SAFE IN-MEMORY HISTORY MANAGEMENT ---
+  void setHistory(nlohmann::json&& history_data);
   void addHistoryEntry(const std::string& station_name, const nlohmann::json& entry);
   nlohmann::json getStationHistory(const std::string& station_name) const;
   size_t getStationHistorySize(const std::string& station_name) const;
   void ensureStationHistoryExists(const std::string& station_name);
-  void loadHistoryFromDisk();
-  void saveHistoryToDisk();
-
-  // Persistence (will be used by StationManager, but state is managed here)
-  void loadFavorites(std::vector<RadioStream>& stations);
-  void saveFavorites(const std::vector<RadioStream>& stations);
-  void loadSession(const std::vector<RadioStream>& stations);
-  void saveSession(const std::vector<RadioStream>& stations);
+  nlohmann::json getFullHistory() const; // To retrieve for saving
 
 private:
-  nlohmann::json& getHistory(); // Now private
+  nlohmann::json& getHistory(); // Private helper
   std::unique_ptr<nlohmann::json> m_song_history;
   mutable std::mutex m_history_mutex; // Made mutable to be used in const methods
 };

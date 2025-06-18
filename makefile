@@ -21,7 +21,8 @@ SRCS := $(SRCDIR)/radio.cpp \
         $(SRCDIR)/RadioStream.cpp \
         $(SRCDIR)/UIManager.cpp \
         $(SRCDIR)/json.cpp \
-        $(SRCDIR)/Utils.cpp
+        $(SRCDIR)/PersistenceManager.cpp \
+        $(SRCDIR)/Utils.cpp 
 
 
 OBJS := $(patsubst $(SRCDIR)/%.cpp,$(BUILDDIR)/%.o,$(SRCS))

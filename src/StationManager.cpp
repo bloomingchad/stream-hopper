@@ -1,6 +1,7 @@
 #include "StationManager.h"
 #include "AppState.h"
 #include "Utils.h"
+#include "PersistenceManager.h" // <-- NEW
 #include <algorithm>
 #include <stdexcept>
 #include <iostream>
@@ -11,7 +12,7 @@
 #include <cmath>
 #include <unordered_set>
 #include <deque>
-#include <future> // <-- MODIFIED: From <thread>
+#include <future>
 #include <mpv/client.h>
 
 namespace {
@@ -39,10 +40,32 @@ StationManager::StationManager(const std::vector<std::pair<std::string, std::vec
         m_stations.emplace_back(i, station_data[i].first, station_data[i].second.front());
     }
     
-    m_app_state.loadFavorites(m_stations);
-    m_app_state.loadSession(m_stations);
-    m_app_state.loadHistoryFromDisk();
+    // --- MODIFIED: Use PersistenceManager for loading ---
+    PersistenceManager persistence;
     
+    // 1. Load History
+    m_app_state.setHistory(persistence.loadHistory());
+    
+    // 2. Load Favorites
+    const auto favorite_names = persistence.loadFavoriteNames();
+    for (auto& station : m_stations) {
+        if (favorite_names.count(station.getName())) {
+            station.toggleFavorite();
+        }
+    }
+
+    // 3. Load Session
+    if (auto last_station_name = persistence.loadLastStationName()) {
+        auto it = std::find_if(m_stations.begin(), m_stations.end(),
+                               [&](const RadioStream& station) {
+                                   return station.getName() == *last_station_name;
+                               });
+        if (it != m_stations.end()) {
+            m_app_state.active_station_idx = std::distance(m_stations.begin(), it);
+        }
+    }
+
+    // 4. Ensure history objects exist for all stations after loading
     for (const auto& station : m_stations) {
         m_app_state.ensureStationHistoryExists(station.getName());
     }
@@ -51,7 +74,6 @@ StationManager::StationManager(const std::vector<std::pair<std::string, std::vec
 StationManager::~StationManager() {
     stopEventLoop();
     
-    // --- MODIFIED: Wait for all futures to complete ---
     std::lock_guard<std::mutex> lock(m_fade_futures_mutex);
     for (auto& f : m_fade_futures) {
         if (f.valid()) {
@@ -59,9 +81,12 @@ StationManager::~StationManager() {
         }
     }
 
-    m_app_state.saveFavorites(m_stations);
-    m_app_state.saveSession(m_stations);
-    m_app_state.saveHistoryToDisk();
+    PersistenceManager persistence;
+    persistence.saveHistory(m_app_state.getFullHistory());
+    persistence.saveFavorites(m_stations);
+    if (!m_stations.empty()) {
+        persistence.saveSession(m_stations[m_app_state.active_station_idx].getName());
+    }
 }
 
 void StationManager::runEventLoop() {
@@ -283,7 +308,6 @@ void StationManager::fadeAudio(RadioStream& station, double from_vol, double to_
     station.setTargetVolume(to_vol);
     int captured_generation = station.getGeneration();
 
-    // --- MODIFIED: Use std::async to get a std::future ---
     auto future = std::async(std::launch::async, [this, &station, from_vol, to_vol, duration_ms, captured_generation]() {
         const int steps = 50;
         const int step_delay_ms = duration_ms > 0 ? duration_ms / steps : 0;
@@ -332,7 +356,7 @@ void StationManager::mpvEventLoop() {
         if (m_app_state.quit_flag.load()) break;
 
         processLifecycleRequests();
-        cleanupFinishedFutures(); // <-- NEW: Cleanup finished tasks
+        cleanupFinishedFutures();
 
         std::unordered_set<int> indices_to_poll;
         {
@@ -382,12 +406,10 @@ void StationManager::handlePropertyChange(mpv_event* event) {
 }
 
 void StationManager::cleanupFinishedFutures() {
-    // --- NEW: Implementation to remove completed futures ---
     std::lock_guard<std::mutex> lock(m_fade_futures_mutex);
     m_fade_futures.erase(
         std::remove_if(m_fade_futures.begin(), m_fade_futures.end(), 
             [](const std::future<void>& f) {
-                // non-blocking check to see if the future is ready
                 return f.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
             }
         ), 
@@ -438,7 +460,6 @@ void StationManager::onTitleChanged(RadioStream& station, const std::string& new
     m_app_state.addHistoryEntry(station.getName(), history_entry_for_file);
     m_app_state.new_songs_found++;
     
-    m_app_state.saveHistoryToDisk(); 
     station.setCurrentTitle(new_title);
     m_app_state.needs_redraw = true;
 }
