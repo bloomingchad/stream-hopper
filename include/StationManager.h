@@ -10,6 +10,7 @@
 #include <mutex>
 #include <unordered_set>
 #include <deque>
+#include <future> // <-- MODIFIED: From <thread>
 
 #include "RadioStream.h"
 #include "AppState.h" 
@@ -52,7 +53,7 @@ private:
   void fadeAudio(RadioStream& station, double from_vol, double to_vol, int duration_ms);
   RadioStream* findStationById(int station_id);
   bool contains_ci(const std::string& haystack, const std::string& needle);
-  void cleanupFinishedThreads();
+  void cleanupFinishedFutures(); // <-- MODIFIED: from cleanupFinishedThreads
   
   // --- Request-based Lifecycle Management ---
   void requestStationInitialization(int station_idx);
@@ -71,8 +72,9 @@ private:
   std::atomic<bool> m_wakeup_flag;
   static void mpv_wakeup_cb(void* ctx);
 
-  std::vector<std::thread> m_fade_threads;
-  std::mutex m_fade_threads_mutex;
+  // --- MODIFIED: Use std::future to manage async tasks ---
+  std::vector<std::future<void>> m_fade_futures;
+  std::mutex m_fade_futures_mutex;
   
   // --- Lifecycle Queues ---
   std::deque<int> m_initialization_queue;

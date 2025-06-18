@@ -11,6 +11,7 @@
 #include <cmath>
 #include <unordered_set>
 #include <deque>
+#include <future> // <-- MODIFIED: From <thread>
 #include <mpv/client.h>
 
 namespace {
@@ -50,9 +51,11 @@ StationManager::StationManager(const std::vector<std::pair<std::string, std::vec
 StationManager::~StationManager() {
     stopEventLoop();
     
-    for (auto& t : m_fade_threads) {
-        if (t.joinable()) {
-            t.join();
+    // --- MODIFIED: Wait for all futures to complete ---
+    std::lock_guard<std::mutex> lock(m_fade_futures_mutex);
+    for (auto& f : m_fade_futures) {
+        if (f.valid()) {
+            f.wait();
         }
     }
 
@@ -280,7 +283,8 @@ void StationManager::fadeAudio(RadioStream& station, double from_vol, double to_
     station.setTargetVolume(to_vol);
     int captured_generation = station.getGeneration();
 
-    std::thread fade_worker([this, &station, from_vol, to_vol, duration_ms, captured_generation]() {
+    // --- MODIFIED: Use std::async to get a std::future ---
+    auto future = std::async(std::launch::async, [this, &station, from_vol, to_vol, duration_ms, captured_generation]() {
         const int steps = 50;
         const int step_delay_ms = duration_ms > 0 ? duration_ms / steps : 0;
         const double vol_step = (steps > 0) ? (to_vol - from_vol) / steps : (to_vol - from_vol);
@@ -288,7 +292,7 @@ void StationManager::fadeAudio(RadioStream& station, double from_vol, double to_
 
         for (int i = 0; i < steps; ++i) {
             if (m_app_state.quit_flag || station.getGeneration() != captured_generation || std::abs(station.getTargetVolume() - to_vol) > 0.01) {
-                return; // The station was shut down or another fade started. Exit.
+                return;
             }
             current_vol += vol_step;
             station.setCurrentVolume(current_vol);
@@ -313,8 +317,8 @@ void StationManager::fadeAudio(RadioStream& station, double from_vol, double to_
         wakeupEventLoop();
     });
 
-    std::lock_guard<std::mutex> lock(m_fade_threads_mutex);
-    m_fade_threads.push_back(std::move(fade_worker));
+    std::lock_guard<std::mutex> lock(m_fade_futures_mutex);
+    m_fade_futures.push_back(std::move(future));
 }
 
 void StationManager::mpvEventLoop() {
@@ -328,6 +332,7 @@ void StationManager::mpvEventLoop() {
         if (m_app_state.quit_flag.load()) break;
 
         processLifecycleRequests();
+        cleanupFinishedFutures(); // <-- NEW: Cleanup finished tasks
 
         std::unordered_set<int> indices_to_poll;
         {
@@ -376,8 +381,18 @@ void StationManager::handlePropertyChange(mpv_event* event) {
     }
 }
 
-void StationManager::cleanupFinishedThreads() {
-    std::lock_guard<std::mutex> lock(m_fade_threads_mutex);
+void StationManager::cleanupFinishedFutures() {
+    // --- NEW: Implementation to remove completed futures ---
+    std::lock_guard<std::mutex> lock(m_fade_futures_mutex);
+    m_fade_futures.erase(
+        std::remove_if(m_fade_futures.begin(), m_fade_futures.end(), 
+            [](const std::future<void>& f) {
+                // non-blocking check to see if the future is ready
+                return f.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+            }
+        ), 
+        m_fade_futures.end()
+    );
 }
 
 RadioStream* StationManager::findStationById(int station_id) {
