@@ -63,7 +63,17 @@ StationManager::~StationManager() {
         m_actor_thread.join();
     }
 
-    // Now it's safe to save, as the actor has shut down.
+    // Wait for any outstanding fade threads to complete BEFORE we save
+    {
+        std::lock_guard<std::mutex> lock(m_fade_futures_mutex);
+        for(auto& fut : m_fade_futures) {
+            if (fut.valid()) {
+                fut.wait();
+            }
+        }
+    }
+
+    // Now it's safe to save, as all threads are stopped.
     PersistenceManager persistence;
     persistence.saveHistory(m_app_state.getFullHistory());
     persistence.saveFavorites(m_stations);
@@ -73,8 +83,6 @@ StationManager::~StationManager() {
 }
 
 const std::vector<RadioStream>& StationManager::getStations() const {
-    // This is safe because the vector structure is not modified after the constructor.
-    // Only the elements within are modified, by the actor thread.
     return m_stations;
 }
 
@@ -86,7 +94,6 @@ void StationManager::post(StationManagerMessage message) {
     m_queue_cond.notify_one();
 }
 
-// The main loop for the actor thread. It's the only thread that modifies state.
 void StationManager::actorLoop() {
     post(Msg::UpdateActiveWindow{}); // Initial load
 
@@ -112,10 +119,12 @@ void StationManager::actorLoop() {
         }, message);
 
         if (should_quit) {
-            // Cleanly shut down all MPV instances before exiting
+            // Iterate over the set to shut down the stations...
             for (int station_idx : m_active_station_indices) {
-                shutdownStation(station_idx);
+                m_stations[station_idx].shutdown();
             }
+            // ...then clear the set *after* the loop is finished.
+            m_active_station_indices.clear();
             break;
         }
 
