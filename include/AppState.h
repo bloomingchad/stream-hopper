@@ -35,13 +35,13 @@ public:
   std::atomic<int> active_station_idx;
   std::atomic<bool> quit_flag;
   std::atomic<bool> needs_redraw;
-  std::atomic<bool> small_mode_active;
+  std::atomic<bool> auto_hop_mode_active;
   std::atomic<bool> copy_mode_active;
   
   ActivePanel active_panel;
   int history_scroll_offset;
   std::chrono::steady_clock::time_point copy_mode_start_time;
-  std::chrono::steady_clock::time_point small_mode_start_time;
+  std::chrono::steady_clock::time_point auto_hop_start_time;
   HopperMode hopper_mode;
   std::chrono::steady_clock::time_point last_switch_time;
   

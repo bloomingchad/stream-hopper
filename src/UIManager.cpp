@@ -152,12 +152,12 @@ void UIManager::draw_footer_bar(int y, int width, bool is_compact, const AppStat
     std::string footer_text;
     if (app_state.copy_mode_active) {
         footer_text = " [COPY MODE] UI Paused. Press any key to resume... ";
-    } else if (app_state.small_mode_active) {
-        footer_text = " [S] Exit Discovery   [C] Copy Mode   [Q] Quit ";
+    } else if (app_state.auto_hop_mode_active) {
+        footer_text = " [A] Stop Auto-Hop   [C] Copy Mode   [Q] Quit ";
     } else if (is_compact) {
-        footer_text = " [P] Mode [Nav] [Tab] Panel [F] Fav [D] Duck [C] Copy [Q] Quit ";
+        footer_text = " [P] Mode [A] Auto [Nav] [Tab] Panel [F] Fav [D] Duck [C] Copy [Q] Quit ";
     } else {
-        footer_text = " [P] Mode [↑↓] Nav [↵] Mute [D] Duck [⇥] Panel [F] Fav [C] Copy [Q] Quit ";
+        footer_text = " [P] Mode [A] Auto-Hop [↑↓] Nav [↵] Mute [D] Duck [⇥] Panel [F] Fav [C] Copy [Q] Quit ";
     }
     
     attron(A_REVERSE);
@@ -186,7 +186,7 @@ void UIManager::draw_compact_mode(int width, int height, const std::vector<Radio
     if (stations.empty()) return;
     const RadioStream& active_station = stations[app_state.active_station_idx];
 
-    int now_playing_h = app_state.small_mode_active ? 6 : 5;
+    int now_playing_h = app_state.auto_hop_mode_active ? 6 : 5;
     int remaining_h = height - now_playing_h - 2;
     int stations_h = std::max(3, static_cast<int>(remaining_h * 0.6));
     int history_h = remaining_h - stations_h;
@@ -199,7 +199,7 @@ void UIManager::draw_compact_mode(int width, int height, const std::vector<Radio
     int stations_y = 2 + now_playing_h;
     int history_y = stations_y + stations_h;
 
-    draw_now_playing_panel(2, 1, width - 2, now_playing_h, active_station, app_state.small_mode_active, remaining_seconds, total_duration);
+    draw_now_playing_panel(2, 1, width - 2, now_playing_h, active_station, app_state.auto_hop_mode_active, remaining_seconds, total_duration);
 
     draw_stations_panel(stations_y, 1, width - 2, stations_h, stations, app_state, app_state.active_panel == ActivePanel::STATIONS && !app_state.copy_mode_active);
 
@@ -214,13 +214,13 @@ void UIManager::draw_full_mode(int width, int height, const std::vector<RadioStr
 
     int left_panel_w = std::max(35, width / 3);
     int right_panel_w = width - left_panel_w;
-    int top_right_h = app_state.small_mode_active ? 7 : 6;
+    int top_right_h = app_state.auto_hop_mode_active ? 7 : 6;
     int bottom_right_h = height - top_right_h - 2;
 
     draw_stations_panel(1, 0, left_panel_w, height - 2, stations, app_state, app_state.active_panel == ActivePanel::STATIONS && !app_state.copy_mode_active);
     const RadioStream& current_station = stations[app_state.active_station_idx];
     
-    draw_now_playing_panel(1, left_panel_w, right_panel_w, top_right_h, current_station, app_state.small_mode_active, remaining_seconds, total_duration);
+    draw_now_playing_panel(1, left_panel_w, right_panel_w, top_right_h, current_station, app_state.auto_hop_mode_active, remaining_seconds, total_duration);
     
     draw_history_panel(1 + top_right_h, left_panel_w, right_panel_w, bottom_right_h, current_station, app_state, app_state.active_panel == ActivePanel::HISTORY && !app_state.copy_mode_active);
 }
@@ -284,9 +284,9 @@ void UIManager::draw_stations_panel(int y, int x, int w, int h, const std::vecto
     }
 }
 
-void UIManager::draw_now_playing_panel(int y, int x, int w, int h, const RadioStream& station, bool is_small_mode,
+void UIManager::draw_now_playing_panel(int y, int x, int w, int h, const RadioStream& station, bool is_auto_hop_mode,
                                        int remaining_seconds, int total_duration) {
-    std::string box_title = is_small_mode ? "🤖 DISCOVERY MODE" : "▶️  NOW PLAYING";
+    std::string box_title = is_auto_hop_mode ? "🤖 AUTO-HOP MODE" : "▶️  NOW PLAYING";
     draw_box(y, x, w, h, box_title, false);
 
     int inner_w = w - 4;
@@ -317,7 +317,7 @@ void UIManager::draw_now_playing_panel(int y, int x, int w, int h, const RadioSt
         attroff(COLOR_PAIR(color_pair_num));
     }
 
-    if (is_small_mode) {
+    if (is_auto_hop_mode) {
         int bar_width = inner_w - 2;
         if (bar_width > 0) {
             double elapsed_percent = 0.0;

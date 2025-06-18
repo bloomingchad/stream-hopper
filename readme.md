@@ -9,7 +9,7 @@ a terminal-based radio station switcher for discovering new music through live s
 - **⚡ instant station switching** - seamlessly hop between radio stations with smooth audio fading
 - **🎤 live "now playing" display** - see exactly what's playing on each station in real-time  
 - **🔇 smart mute controls** - mute/unmute stations without losing your place
-- **🤖 small mode** - auto-discovery mode that cycles through all stations automatically
+- **🤖 auto-hop mode** - auto-discovery mode that cycles through all stations automatically
 - **📝 json history logging** - automatically captures and saves song titles for later reference
 - **🎛️ multi-stream management** - monitor multiple stations simultaneously with individual volume control
 - **🎨 clean terminal ui** - distraction-free interface built with ncurses
@@ -59,24 +59,29 @@ sudo pacman -s gcc make pkg-config mpv ncurses
 |-----|--------|
 | `↑` / `↓` | switch between radio stations |
 | `enter` | mute/unmute current station |
-| `s` | toggle small mode (auto-discovery) |
+| `a` | toggle auto-hop mode (auto-discovery) |
+| `p` | cycle through performance modes |
+| `d` | toggle audio ducking |
+| `f` | toggle favorite for current station |
+| `tab` | switch focus between panels |
+| `c` | enter copy mode (pauses UI) |
 | `q` | quit application |
 
-### small mode
-press `s` to enter small mode - the app will automatically cycle through all stations, spending equal time on each one. perfect for passive discovery when you want to sit back and let the music surprise you.
+### auto-hop mode
+press `a` to enter auto-hop mode - the app will automatically cycle through all stations, spending equal time on each one. perfect for passive discovery when you want to sit back and let the music surprise you.
 
 ## 📁 configuration
 
-- **station list:** modify the `station_data` vector in `main()` to add/remove stations
+- **station list:** modify the `station_data` vector in `include/StationList.hpp` to add/remove stations
 - **song history:** automatically saved to `radio_history.json` in the current directory
-- **fade duration:** adjust `fade_time_ms` (default: 900ms) for faster/slower transitions
-- **small mode duration:** modify `small_mode_total_time_seconds` (default: 12 minutes total cycle)
+- **fade duration:** adjust `FADE_TIME_MS` in `StationManager.cpp` (default: 900ms) for faster/slower transitions
+- **auto-hop duration:** modify `AUTO_HOP_TOTAL_TIME_SECONDS` in `RadioPlayer.cpp` (default: ~18 minutes total cycle)
 
 ### adding your own stations
 
-edit the `station_data` vector in the source code:
+edit the `station_data` vector in `include/StationList.hpp`:
 ```cpp
-{"station name", "https://stream-url-here"},
+{"station name", {"https://stream-url-here"}},
 ```
 
 the app comes pre-configured with a curated selection of european dance, electronic, and german rap stations.

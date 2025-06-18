@@ -28,11 +28,11 @@ private:
     void onUpArrow();
     void onDownArrow();
     void onEnter();
-    void onToggleSmallMode();
+    void onToggleAutoHopMode(); // <-- THIS LINE WAS THE FIX
     void onToggleFavorite();
     void onToggleDucking();
     void onCopyMode();
-    void onToggleHopperMode(); // <-- NEW
+    void onToggleHopperMode();
     void onQuit();
     void onSwitchPanel();
 

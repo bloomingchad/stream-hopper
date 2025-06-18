@@ -13,11 +13,11 @@ const std::string HISTORY_FILENAME = "radio_history.json";
 
 AppState::AppState()
     : active_station_idx(0), quit_flag(false), needs_redraw(true),
-      small_mode_active(false), copy_mode_active(false),
+      auto_hop_mode_active(false), copy_mode_active(false),
       active_panel(ActivePanel::STATIONS), history_scroll_offset(0),
-      hopper_mode(HopperMode::BALANCED), // <-- NEW: Default to balanced mode
-      last_switch_time(std::chrono::steady_clock::now()), // <-- NEW: Initialize switch time
-      session_start_time(std::chrono::steady_clock::now()), // <-- Initialize session start time
+      hopper_mode(HopperMode::BALANCED),
+      last_switch_time(std::chrono::steady_clock::now()),
+      session_start_time(std::chrono::steady_clock::now()),
       session_switches(0),
       new_songs_found(0),
       songs_copied(0)
