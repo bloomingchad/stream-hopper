@@ -1,12 +1,12 @@
 #include "StationManager.h"
 #include "PersistenceManager.h"
+#include "Core/MpvEventHandler.h" // NEW: Include the handler
 #include "Utils.h"
 #include <algorithm>
 #include <stdexcept>
 #include <iostream>
 #include <iomanip>
 #include <sstream>
-#include <cstring>
 #include <ctime>
 #include <cmath>
 #include <mpv/client.h>
@@ -14,8 +14,6 @@
 namespace {
     constexpr int FADE_TIME_MS = 900;
     constexpr double DUCK_VOLUME = 40.0;
-    constexpr int BITRATE_REDRAW_THRESHOLD = 2;
-    constexpr int HISTORY_WRITE_THRESHOLD = 5; // Write to disk after every 5 new songs
 }
 
 StationManager::StationManager(const std::vector<std::pair<std::string, std::vector<std::string>>>& station_data, AppState& app_state)
@@ -48,7 +46,13 @@ StationManager::StationManager(const std::vector<std::pair<std::string, std::vec
         m_app_state.ensureStationHistoryExists(station.getName());
     }
 
-    // Start the actor thread
+    // NEW: Instantiate the event handler, passing it state and a poster function.
+    m_event_handler = std::make_unique<MpvEventHandler>(
+        m_stations,
+        m_app_state,
+        [this](StationManagerMessage msg){ this->post(std::move(msg)); }
+    );
+
     m_actor_thread = std::thread(&StationManager::actorLoop, this);
 }
 
@@ -91,10 +95,8 @@ void StationManager::post(StationManagerMessage message) {
 }
 
 void StationManager::actorLoop() {
-    post(Msg::UpdateActiveWindow{}); // Initial load
-    while (processNextMessage()) {
-        // Loop continues as long as processNextMessage returns true.
-    }
+    post(Msg::UpdateActiveWindow{});
+    while (processNextMessage()) {}
 }
 
 bool StationManager::processNextMessage() {
@@ -141,11 +143,11 @@ void StationManager::handle_shutdown() {
     m_active_station_indices.clear();
 }
 
+// --- REFACTORED: pollMpvEvents now delegates to the handler component ---
 void StationManager::pollMpvEvents() {
     bool events_pending = true;
     while(events_pending) {
         events_pending = false;
-        // --- FIX: Use a const reference to avoid an expensive copy ---
         const auto& indices_to_poll = m_active_station_indices;
         for(int station_idx : indices_to_poll) { 
             if (station_idx >= (int)m_stations.size() || !m_stations[station_idx].isInitialized()) {
@@ -156,7 +158,7 @@ void StationManager::pollMpvEvents() {
             // We use a non-blocking wait because this is a polling loop
             mpv_event *event = mpv_wait_event(station.getMpvHandle(), 0);
             if (event->event_id != MPV_EVENT_NONE) {
-                handleMpvEvent(event);
+                m_event_handler->handleEvent(event); // DELEGATE!
                 events_pending = true;
             }
         }
@@ -328,100 +330,6 @@ void StationManager::fadeAudio(RadioStream& station, double from_vol, double to_
     m_fade_futures.push_back(std::move(future));
 }
 
-
-void StationManager::handleMpvEvent(mpv_event* event) {
-    if (event->event_id == MPV_EVENT_PROPERTY_CHANGE) {
-        handlePropertyChange(event);
-    }
-}
-
-void StationManager::handlePropertyChange(mpv_event* event) {
-    mpv_event_property* prop = reinterpret_cast<mpv_event_property*>(event->data);
-    RadioStream* station = findStationById(event->reply_userdata);
-    if (!station || !station->isInitialized()) return;
-    
-    if (strcmp(prop->name, "media-title") == 0) onTitleProperty(prop, *station);
-    else if (strcmp(prop->name, "audio-bitrate") == 0) onBitrateProperty(prop, *station);
-    else if (strcmp(prop->name, "eof-reached") == 0) onEofProperty(prop, *station);
-    else if (strcmp(prop->name, "core-idle") == 0) onCoreIdleProperty(prop, *station);
-}
-
-void StationManager::onTitleChanged(RadioStream& station, const std::string& new_title) {
-    if (new_title.empty() || new_title == station.getCurrentTitle() || new_title == "N/A" || new_title == "Initializing...") return;
-    if (contains_ci(station.getURL(), new_title) || contains_ci(station.getName(), new_title)) {
-        if (new_title != station.getCurrentTitle()) station.setCurrentTitle(new_title);
-        return;
-    }
-    std::string title_to_log = new_title;
-    if (!station.hasLoggedFirstSong()) {
-        title_to_log = "✨ " + title_to_log;
-        station.setHasLoggedFirstSong(true);
-    }
-    auto now = std::chrono::system_clock::now();
-    std::time_t now_c = std::chrono::system_clock::to_time_t(now);
-    std::tm now_tm = *std::localtime(&now_c);
-    std::stringstream time_ss;
-    time_ss << std::put_time(&now_tm, "%Y-%m-%d %H:%M:%S");
-    nlohmann::json history_entry_for_file = { time_ss.str(), title_to_log };
-    m_app_state.addHistoryEntry(station.getName(), history_entry_for_file);
-    m_app_state.new_songs_found++;
-    station.setCurrentTitle(new_title);
-    m_app_state.needs_redraw = true;
-
-    // --- NEW: Trigger a buffered write if the threshold is reached ---
-    if (++m_app_state.unsaved_history_count >= HISTORY_WRITE_THRESHOLD) {
-        post(Msg::SaveHistory{});
-    }
-}
-
-void StationManager::onStreamEof(RadioStream& station) {
-    station.setCurrentTitle("Stream Error - Reconnecting...");
-    station.setHasLoggedFirstSong(false);
-    m_app_state.needs_redraw = true;
-    const char* cmd[] = {"loadfile", station.getURL().c_str(), "replace", nullptr};
-    check_mpv_error(mpv_command_async(station.getMpvHandle(), 0, cmd), "reconnect on eof");
-}
-
-// Boilerplate property handlers
-void StationManager::onTitleProperty(mpv_event_property* prop, RadioStream& station) {
-    if (prop->format == MPV_FORMAT_STRING) {
-        char* title_cstr = *reinterpret_cast<char**>(prop->data);
-        onTitleChanged(station, title_cstr ? title_cstr : "N/A");
-    }
-}
-void StationManager::onBitrateProperty(mpv_event_property* prop, RadioStream& station) {
-    if (prop->format == MPV_FORMAT_INT64) {
-        int old_bitrate = station.getBitrate();
-        int new_bitrate = static_cast<int>(*reinterpret_cast<int64_t*>(prop->data) / 1000);
-        station.setBitrate(new_bitrate);
-        if (station.getID() == m_app_state.active_station_idx && std::abs(new_bitrate - old_bitrate) > BITRATE_REDRAW_THRESHOLD) {
-            m_app_state.needs_redraw = true;
-        }
-    }
-}
-void StationManager::onEofProperty(mpv_event_property* prop, RadioStream& station) {
-    if (prop->format == MPV_FORMAT_FLAG && *reinterpret_cast<int*>(prop->data)) onStreamEof(station);
-}
-void StationManager::onCoreIdleProperty(mpv_event_property* prop, RadioStream& station) {
-    if (prop->format == MPV_FORMAT_FLAG) {
-        bool is_idle = *reinterpret_cast<int*>(prop->data);
-        if (station.isBuffering() != is_idle) {
-            station.setBuffering(is_idle);
-            m_app_state.needs_redraw = true;
-        }
-    }
-}
-
-// Utility methods
-RadioStream* StationManager::findStationById(int station_id) {
-    auto it = std::find_if(m_stations.begin(), m_stations.end(), [station_id](const RadioStream& s) { return s.getID() == station_id; });
-    return (it != m_stations.end()) ? &(*it) : nullptr;
-}
-bool StationManager::contains_ci(const std::string& haystack, const std::string& needle) {
-    if (needle.empty()) return true;
-    auto it = std::search(haystack.begin(), haystack.end(), needle.begin(), needle.end(), [](char ch1, char ch2) { return std::toupper(ch1) == std::toupper(ch2); });
-    return (it != haystack.end());
-}
 void StationManager::cleanupFinishedFutures() {
     std::lock_guard<std::mutex> lock(m_fade_futures_mutex);
     m_fade_futures.erase(std::remove_if(m_fade_futures.begin(), m_fade_futures.end(), [](const std::future<void>& f) { return f.wait_for(std::chrono::seconds(0)) == std::future_status::ready; }), m_fade_futures.end());
