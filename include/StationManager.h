@@ -2,6 +2,7 @@
 #define STATIONMANAGER_H
 
 #include "RadioStream.h"
+#include "Core/PreloadStrategy.h" // NEW INCLUDE
 #include "AppState.h"
 #include <string>
 #include <vector>
@@ -88,6 +89,7 @@ private:
     // --- State (only accessed by the actor thread) ---
     std::vector<RadioStream> m_stations;
     AppState& m_app_state;
+    Strategy::Preloader m_preloader; // NEW MEMBER
     std::unordered_set<int> m_active_station_indices;
 
     // --- Actor components ---

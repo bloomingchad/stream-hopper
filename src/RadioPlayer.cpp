@@ -44,10 +44,8 @@ RadioPlayer::~RadioPlayer() {
     auto end_time = std::chrono::steady_clock::now();
     auto duration_seconds = std::chrono::duration_cast<std::chrono::seconds>(end_time - m_app_state->session_start_time).count();
 
-    bool forgot_mute = false;
-    // We can't check station state anymore since station_manager is gone, but we can check the mute flag if we want.
-    // For now, we simplify the exit message logic.
-
+    // The logic for 'forgot_mute' was removed, so the variable is no longer needed.
+    
     long duration_minutes = duration_seconds / 60;
     std::cout << "---\n"
                 << "Thank you for using Stream Hopper!\n"

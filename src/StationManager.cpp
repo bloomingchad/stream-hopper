@@ -15,12 +15,7 @@ namespace {
     constexpr int FADE_TIME_MS = 900;
     constexpr double DUCK_VOLUME = 40.0;
     constexpr int BITRATE_REDRAW_THRESHOLD = 2;
-    constexpr auto ACCEL_TIME_WINDOW = std::chrono::milliseconds(500);
-    constexpr int ACCEL_EVENT_THRESHOLD = 3;
-    constexpr int PRELOAD_DEFAULT = 3;
-    constexpr int PRELOAD_EXTRA = 3;
-    constexpr int PRELOAD_REDUCTION = 2;
-    constexpr int HISTORY_WRITE_THRESHOLD = 5; // NEW: Write to disk after every 5 new songs
+    constexpr int HISTORY_WRITE_THRESHOLD = 5; // Write to disk after every 5 new songs
 }
 
 StationManager::StationManager(const std::vector<std::pair<std::string, std::vector<std::string>>>& station_data, AppState& app_state)
@@ -188,46 +183,13 @@ void StationManager::handle_switchStation(int old_idx, int new_idx) {
 
 void StationManager::handle_updateActiveWindow() {
     int station_count = static_cast<int>(m_stations.size());
-    int active_idx = m_app_state.active_station_idx;
 
-    int preload_up = PRELOAD_DEFAULT;
-    int preload_down = PRELOAD_DEFAULT;
-
-    if (m_app_state.hopper_mode == HopperMode::BALANCED && !m_app_state.nav_history.empty()) {
-        const auto& last_event = m_app_state.nav_history.back();
-        NavDirection current_dir = last_event.direction;
-        int consecutive_count = 0;
-        auto now = std::chrono::steady_clock::now();
-        for (auto it = m_app_state.nav_history.rbegin(); it != m_app_state.nav_history.rend(); ++it) {
-            if (now - it->timestamp > ACCEL_TIME_WINDOW) break;
-            if (it->direction == current_dir) consecutive_count++;
-            else break;
-        }
-        if (consecutive_count >= ACCEL_EVENT_THRESHOLD) {
-            if (current_dir == NavDirection::DOWN) {
-                preload_down += PRELOAD_EXTRA;
-                preload_up = std::max(1, PRELOAD_DEFAULT - PRELOAD_REDUCTION);
-            } else {
-                preload_up += PRELOAD_EXTRA;
-                preload_down = std::max(1, PRELOAD_DEFAULT - PRELOAD_REDUCTION);
-            }
-        }
-    }
-
-    std::unordered_set<int> new_active_set;
-    switch (m_app_state.hopper_mode) {
-        case HopperMode::PERFORMANCE:
-            for (int i = 0; i < station_count; ++i) new_active_set.insert(i);
-            break;
-        case HopperMode::FOCUS:
-            new_active_set.insert(active_idx);
-            break;
-        case HopperMode::BALANCED:
-            new_active_set.insert(active_idx);
-            for (int i = 1; i <= preload_up; ++i) new_active_set.insert((active_idx - i + station_count) % station_count);
-            for (int i = 1; i <= preload_down; ++i) new_active_set.insert((active_idx + i) % station_count);
-            break;
-    }
+    // --- DELEGATE to the strategy object to determine which stations should be active ---
+    const auto new_active_set = m_preloader.calculate_active_indices(
+        m_app_state.active_station_idx,
+        station_count,
+        m_app_state.hopper_mode,
+        m_app_state.nav_history);
     
     // Shutdown stations no longer in the active set
     std::vector<int> to_shutdown;
@@ -248,6 +210,7 @@ void StationManager::handle_updateActiveWindow() {
     }
 
     // Ensure the new station is audible
+    int active_idx = m_app_state.active_station_idx;
     RadioStream& new_station = m_stations[active_idx];
     if (new_station.isInitialized() && new_station.getPlaybackState() != PlaybackState::Muted && new_station.getCurrentVolume() < 99.0) {
         fadeAudio(new_station, new_station.getCurrentVolume(), 100.0, FADE_TIME_MS);

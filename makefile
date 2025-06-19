@@ -22,6 +22,7 @@ SRCS := $(SRCDIR)/radio.cpp \
         $(SRCDIR)/UIManager.cpp \
         $(SRCDIR)/json.cpp \
         $(SRCDIR)/PersistenceManager.cpp \
+        $(SRCDIR)/Core/PreloadStrategy.cpp \
         $(SRCDIR)/Utils.cpp 
 
 
