@@ -8,12 +8,11 @@
 #include <mutex>
 #include <string>
 #include <vector>
-#include <deque> // For navigation history
+#include <deque>
 
-// Forward declaration
 class RadioStream;
 
-enum class NavDirection { UP, DOWN }; // For tracking navigation
+enum class NavDirection { UP, DOWN };
 
 struct NavEvent {
     NavDirection direction;
@@ -21,9 +20,9 @@ struct NavEvent {
 };
 
 enum class HopperMode {
-    BALANCED,     // 🍃 Default: Windowed pre-loading
-    PERFORMANCE,  // 🚀 All stations loaded
-    FOCUS         // 🎧 Only active station loaded
+    BALANCED,
+    PERFORMANCE,
+    FOCUS
 };
 enum class ActivePanel { STATIONS, HISTORY };
 
@@ -45,7 +44,6 @@ public:
   HopperMode hopper_mode;
   std::chrono::steady_clock::time_point last_switch_time;
   
-  // --- NEW: Navigation History for Acceleration Detection ---
   std::deque<NavEvent> nav_history;
 
   // --- Session Statistics ---
@@ -53,7 +51,7 @@ public:
   std::atomic<int> session_switches;
   std::atomic<int> new_songs_found;
   std::atomic<int> songs_copied;
-  std::atomic<int> unsaved_history_count; // NEW: Counter for buffered writes
+  std::atomic<int> unsaved_history_count;
 
   // --- THREAD-SAFE IN-MEMORY HISTORY MANAGEMENT ---
   void setHistory(nlohmann::json&& history_data);
@@ -61,12 +59,12 @@ public:
   nlohmann::json getStationHistory(const std::string& station_name) const;
   size_t getStationHistorySize(const std::string& station_name) const;
   void ensureStationHistoryExists(const std::string& station_name);
-  nlohmann::json getFullHistory() const; // To retrieve for saving
+  nlohmann::json getFullHistory() const;
 
 private:
-  nlohmann::json& getHistory(); // Private helper
+  nlohmann::json& getHistory();
   std::unique_ptr<nlohmann::json> m_song_history;
-  mutable std::mutex m_history_mutex; // Made mutable to be used in const methods
+  mutable std::mutex m_history_mutex;
 };
 
 #endif // APPSTATE_H

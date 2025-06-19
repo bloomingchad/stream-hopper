@@ -26,19 +26,18 @@ you'll need a c++ compiler and the following development libraries:
 ### required libraries
 - `libmpv-dev` - media playback engine
 - `ncurses-dev` - terminal ui framework
-- `nlohmann/json` - json parsing (single header file)
 
 ### installation commands
-
-**fedora/rhel/centos:**
-```bash
-sudo dnf install gcc-c++ mpv-devel ncurses-devel pkg-config make
-```
 
 **debian/ubuntu:**
 ```bash
 sudo apt update
 sudo apt install build-essential libmpv-dev libncurses5-dev pkg-config
+```
+
+**fedora/rhel/centos:**
+```bash
+sudo dnf install gcc-c++ mpv-devel ncurses-devel pkg-config make
 ```
 
 **arch linux:**
@@ -48,7 +47,7 @@ sudo pacman -s gcc make pkg-config mpv ncurses
 
 ## 🚀 build & run
 
-1. **download the json header:**
+1. **make:**
    ```bash
    make
    ```

@@ -6,10 +6,8 @@
 #include <memory>
 #include <map>
 #include <functional>
+#include "AppState.h" 
 
-#include "AppState.h" // Include new class
-
-// Forward declarations
 class UIManager;
 class StationManager;
 
@@ -26,13 +24,6 @@ private:
     int getRemainingSecondsForCurrentStation();
     int getStationSwitchDuration();
 
-    // --- State Update Helpers ---
-    void handleCopyModeTimeout();
-    void handleAutoHopTimer();
-    void checkForForgottenMute();
-    void checkForAutomaticFocusMode();
-
-    // --- Input Handler Helpers ---
     void onUpArrow();
     void onDownArrow();
     void onEnter();
@@ -44,11 +35,9 @@ private:
     void onQuit();
     void onSwitchPanel();
 
-    // --- Input Handler Map ---
     std::map<int, std::function<void()>> m_input_handlers;
-
     std::unique_ptr<UIManager> m_ui;
-    std::unique_ptr<AppState> m_app_state;
+    std::unique_ptr<AppState> m_app_state; // It's back!
     std::unique_ptr<StationManager> m_station_manager;
 };
 

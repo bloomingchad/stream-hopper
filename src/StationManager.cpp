@@ -1,6 +1,6 @@
 #include "StationManager.h"
 #include "PersistenceManager.h"
-#include "Core/MpvEventHandler.h" // NEW: Include the handler
+#include "Core/MpvEventHandler.h" 
 #include "Utils.h"
 #include <algorithm>
 #include <stdexcept>
@@ -17,8 +17,8 @@ namespace {
 }
 
 StationManager::StationManager(const std::vector<std::pair<std::string, std::vector<std::string>>>& station_data, AppState& app_state)
-    : m_app_state(app_state) {
-
+: m_app_state(app_state)
+{
     if (station_data.empty()) {
         throw std::runtime_error("No radio stations provided.");
     }
@@ -46,7 +46,6 @@ StationManager::StationManager(const std::vector<std::pair<std::string, std::vec
         m_app_state.ensureStationHistoryExists(station.getName());
     }
 
-    // NEW: Instantiate the event handler, passing it state and a poster function.
     m_event_handler = std::make_unique<MpvEventHandler>(
         m_stations,
         m_app_state,
@@ -57,13 +56,11 @@ StationManager::StationManager(const std::vector<std::pair<std::string, std::vec
 }
 
 StationManager::~StationManager() {
-    // Post the shutdown message and wait for the thread to finish
     post(Msg::Shutdown{});
     if (m_actor_thread.joinable()) {
         m_actor_thread.join();
     }
 
-    // Wait for any outstanding fade threads to complete BEFORE we save
     {
         std::lock_guard<std::mutex> lock(m_fade_futures_mutex);
         for(auto& fut : m_fade_futures) {
@@ -73,7 +70,6 @@ StationManager::~StationManager() {
         }
     }
 
-    // This now acts as the final "flush" for any unsaved history.
     PersistenceManager persistence;
     persistence.saveHistory(m_app_state.getFullHistory());
     persistence.saveFavorites(m_stations);
@@ -125,14 +121,12 @@ bool StationManager::processNextMessage() {
         pollMpvEvents();
         cleanupFinishedFutures();
     }
-
     return should_continue;
 }
 
 void StationManager::handle_saveHistory() {
     PersistenceManager persistence;
     persistence.saveHistory(m_app_state.getFullHistory());
-    // Reset the counter after a successful save
     m_app_state.unsaved_history_count = 0;
 }
 
@@ -143,7 +137,6 @@ void StationManager::handle_shutdown() {
     m_active_station_indices.clear();
 }
 
-// --- REFACTORED: pollMpvEvents now delegates to the handler component ---
 void StationManager::pollMpvEvents() {
     bool events_pending = true;
     while(events_pending) {
@@ -153,27 +146,21 @@ void StationManager::pollMpvEvents() {
             if (station_idx >= (int)m_stations.size() || !m_stations[station_idx].isInitialized()) {
                 continue;
             }
-            
             RadioStream& station = m_stations[station_idx];
-            // We use a non-blocking wait because this is a polling loop
             mpv_event *event = mpv_wait_event(station.getMpvHandle(), 0);
             if (event->event_id != MPV_EVENT_NONE) {
-                m_event_handler->handleEvent(event); // DELEGATE!
+                m_event_handler->handleEvent(event);
                 events_pending = true;
             }
         }
     }
 }
 
-// --- Message Handler Implementations (Private) ---
-
 void StationManager::handle_switchStation(int old_idx, int new_idx) {
     if (new_idx < 0 || new_idx >= (int)m_stations.size()) return;
-
     if (m_app_state.hopper_mode == HopperMode::FOCUS) {
-        handle_setHopperMode(HopperMode::BALANCED);
+        m_app_state.hopper_mode = HopperMode::BALANCED;
     }
-    
     if (new_idx != old_idx) {
         RadioStream& current_station = m_stations[old_idx];
         if (current_station.isInitialized() && current_station.getPlaybackState() != PlaybackState::Muted) {
@@ -185,36 +172,22 @@ void StationManager::handle_switchStation(int old_idx, int new_idx) {
 }
 
 void StationManager::handle_updateActiveWindow() {
-    int station_count = static_cast<int>(m_stations.size());
-
-    // --- DELEGATE to the strategy object to determine which stations should be active ---
     const auto new_active_set = m_preloader.calculate_active_indices(
-        m_app_state.active_station_idx,
-        station_count,
-        m_app_state.hopper_mode,
-        m_app_state.nav_history);
-    
-    // Shutdown stations no longer in the active set
+        m_app_state.active_station_idx, m_stations.size(),
+        m_app_state.hopper_mode, m_app_state.nav_history);
     std::vector<int> to_shutdown;
     for (int idx : m_active_station_indices) {
         if (new_active_set.find(idx) == new_active_set.end()) {
             to_shutdown.push_back(idx);
         }
     }
-    for (int idx : to_shutdown) {
-        shutdownStation(idx);
-    }
-
-    // Initialize new stations
+    for (int idx : to_shutdown) shutdownStation(idx);
     for (int idx : new_active_set) {
         if (m_active_station_indices.find(idx) == m_active_station_indices.end()) {
             initializeStation(idx);
         }
     }
-
-    // Ensure the new station is audible
-    int active_idx = m_app_state.active_station_idx;
-    RadioStream& new_station = m_stations[active_idx];
+    RadioStream& new_station = m_stations[m_app_state.active_station_idx];
     if (new_station.isInitialized() && new_station.getPlaybackState() != PlaybackState::Muted && new_station.getCurrentVolume() < 99.0) {
         fadeAudio(new_station, new_station.getCurrentVolume(), 100.0, FADE_TIME_MS);
     }
@@ -225,7 +198,6 @@ void StationManager::handle_toggleMute(int station_idx) {
     if (station_idx < 0 || station_idx >= (int)m_stations.size()) return;
     RadioStream& station = m_stations[station_idx];
     if (!station.isInitialized() || station.getPlaybackState() == PlaybackState::Ducked) return;
-
     if (station.getPlaybackState() == PlaybackState::Muted) {
         station.setPlaybackState(PlaybackState::Playing);
         station.resetMuteStartTime();
@@ -242,7 +214,6 @@ void StationManager::handle_toggleDucking(int station_idx) {
     if (station_idx < 0 || station_idx >= (int)m_stations.size()) return;
     RadioStream& station = m_stations[station_idx];
     if (!station.isInitialized() || station.getPlaybackState() == PlaybackState::Muted) return;
-
     if (station.getPlaybackState() == PlaybackState::Ducked) {
         station.setPlaybackState(PlaybackState::Playing);
         fadeAudio(station, station.getCurrentVolume(), station.getPreMuteVolume(), FADE_TIME_MS);
@@ -254,9 +225,7 @@ void StationManager::handle_toggleDucking(int station_idx) {
 }
 
 void StationManager::handle_toggleFavorite(int station_idx) {
-    if (station_idx >= 0 && station_idx < (int)m_stations.size()) {
-        m_stations[station_idx].toggleFavorite();
-    }
+    if (station_idx >= 0 && station_idx < (int)m_stations.size()) m_stations[station_idx].toggleFavorite();
 }
 
 void StationManager::handle_setHopperMode(HopperMode new_mode) {
@@ -266,12 +235,10 @@ void StationManager::handle_setHopperMode(HopperMode new_mode) {
     }
 }
 
-// --- Other Private Helpers ---
-
 void StationManager::initializeStation(int station_idx) {
     if (station_idx < 0 || station_idx >= (int)m_stations.size()) return;
-    double initial_volume = (station_idx == m_app_state.active_station_idx) ? 100.0 : 0.0;
-    m_stations[station_idx].initialize(initial_volume);
+    double vol = (station_idx == m_app_state.active_station_idx) ? 100.0 : 0.0;
+    m_stations[station_idx].initialize(vol);
     m_active_station_indices.insert(station_idx);
 }
 
@@ -292,38 +259,27 @@ void StationManager::fadeAudio(RadioStream& station, double from_vol, double to_
     if (!station.isInitialized()) return;
     station.setFading(true);
     station.setTargetVolume(to_vol);
-    int captured_generation = station.getGeneration();
-
-    auto future = std::async(std::launch::async, [this, &station, from_vol, to_vol, duration_ms, captured_generation]() {
+    int gen = station.getGeneration();
+    auto future = std::async(std::launch::async, [this, &station, from_vol, to_vol, duration_ms, gen]() {
         const int steps = 50;
         const int step_delay_ms = duration_ms > 0 ? duration_ms / steps : 0;
         const double vol_step = (steps > 0) ? (to_vol - from_vol) / steps : (to_vol - from_vol);
         double current_vol = from_vol;
-        
         for (int i = 0; i < steps; ++i) {
-            if (!isFadeStillValid(station, captured_generation, to_vol)) return;
-
+            if (!isFadeStillValid(station, gen, to_vol)) return;
             current_vol += vol_step;
             station.setCurrentVolume(current_vol);
             double clamped_vol = std::max(0.0, std::min(100.0, current_vol));
-            if (station.getMpvHandle()) {
-                mpv_set_property_async(station.getMpvHandle(), 0, "volume", MPV_FORMAT_DOUBLE, &clamped_vol);
-            }
+            if (station.getMpvHandle()) mpv_set_property_async(station.getMpvHandle(), 0, "volume", MPV_FORMAT_DOUBLE, &clamped_vol);
             m_app_state.needs_redraw = true;
             std::this_thread::sleep_for(std::chrono::milliseconds(step_delay_ms));
         }
-
-        if (isFadeStillValid(station, captured_generation, to_vol)) {
+        if (isFadeStillValid(station, gen, to_vol)) {
             station.setCurrentVolume(to_vol);
             double final_vol = std::max(0.0, std::min(100.0, to_vol));
-            if (station.getMpvHandle()) {
-               mpv_set_property_async(station.getMpvHandle(), 0, "volume", MPV_FORMAT_DOUBLE, &final_vol);
-            }
+            if (station.getMpvHandle()) mpv_set_property_async(station.getMpvHandle(), 0, "volume", MPV_FORMAT_DOUBLE, &final_vol);
         }
-        
-        if (station.getGeneration() == captured_generation) {
-             station.setFading(false);
-        }
+        if (station.getGeneration() == gen) station.setFading(false);
         m_app_state.needs_redraw = true;
     });
     std::lock_guard<std::mutex> lock(m_fade_futures_mutex);

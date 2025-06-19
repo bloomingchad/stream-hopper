@@ -3,7 +3,6 @@
 #include "StationManager.h"
 #include "RadioStream.h"
 #include "Utils.h"
-
 #include <ncurses.h>
 #include <iostream>
 #include <algorithm>
@@ -49,20 +48,11 @@ RadioPlayer::RadioPlayer(const std::vector<std::pair<std::string, std::vector<st
 
 RadioPlayer::~RadioPlayer() {
     m_app_state->quit_flag = true;
-    
-    // --- FIX: Explicitly control the shutdown order ---
-    // 1. Shut down the StationManager first. Its destructor will block until
-    //    all of its threads (actor and fade threads) are completely finished.
-    //    This guarantees no thread will try to access AppState after this point.
     m_station_manager.reset();
-
-    // 2. Shut down the UI.
     if (m_ui) {
         m_ui.reset();
     }
     
-    // 3. Now that all threads are stopped and the UI is closed, it's safe to
-    //    access AppState to print the final summary.
     auto end_time = std::chrono::steady_clock::now();
     auto duration_seconds = std::chrono::duration_cast<std::chrono::seconds>(end_time - m_app_state->session_start_time).count();
     
@@ -85,63 +75,34 @@ void RadioPlayer::run() {
                        getRemainingSecondsForCurrentStation(), getStationSwitchDuration());
         }
 
-        // 2. Now, get input. This is the only part of the loop that sleeps.
         int ch = m_ui->getInput();
 
-        // 3. Handle any user input that we just received.
         if (ch != ERR) {
             handleInput(ch);
         }
 
-        // 4. Handle any time-based state updates.
         updateState();
     }
 }
 
-// --- REFACTORED: updateState is now a clean dispatcher ---
 void RadioPlayer::updateState() {
-    handleCopyModeTimeout();
-    handleAutoHopTimer();
-    checkForForgottenMute();
-    checkForAutomaticFocusMode();
-}
-
-// --- NEW HELPER: Handles the timeout for copy mode ---
-void RadioPlayer::handleCopyModeTimeout() {
     if (m_app_state->copy_mode_active) {
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_app_state->copy_mode_start_time);
         if (elapsed.count() >= COPY_MODE_TIMEOUT_SECONDS) {
-            m_app_state->copy_mode_active = false;
-            m_app_state->needs_redraw = true;
-            m_ui->setInputTimeout(m_app_state->auto_hop_mode_active ? DISCOVERY_MODE_REFRESH_MS : NORMAL_MODE_REFRESH_MS);
+            onCopyMode(); // Use the handler to toggle it off
         }
     }
-}
 
-// --- NEW HELPER: Handles the station switch timer for auto-hop mode ---
-void RadioPlayer::handleAutoHopTimer() {
     if (m_app_state->auto_hop_mode_active) {
-        const auto& stations = m_station_manager->getStations();
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_app_state->auto_hop_start_time);
-        
         if (elapsed.count() >= getStationSwitchDuration()) {
-            int old_idx = m_app_state->active_station_idx;
-            int new_idx = (old_idx + 1) % static_cast<int>(stations.size());
-            
-            m_station_manager->post(Msg::SwitchStation{old_idx, new_idx});
-            m_app_state->active_station_idx = new_idx;
-            m_station_manager->post(Msg::UpdateActiveWindow{});
-
+            onDownArrow(); // Simply simulate a down arrow press to advance
             m_app_state->auto_hop_start_time = std::chrono::steady_clock::now();
-            m_app_state->needs_redraw = true;
         }
     }
-}
-
-// --- NEW HELPER: Checks if the user has left the app muted for too long ---
-void RadioPlayer::checkForForgottenMute() {
+    
     const auto& stations = m_station_manager->getStations();
     if (!m_app_state->auto_hop_mode_active && !stations.empty()) {
         const RadioStream& active_station = stations[m_app_state->active_station_idx];
@@ -156,10 +117,7 @@ void RadioPlayer::checkForForgottenMute() {
             }
         }
     }
-}
 
-// --- NEW HELPER: Switches to Focus mode after a period of inactivity ---
-void RadioPlayer::checkForAutomaticFocusMode() {
     if (!m_app_state->auto_hop_mode_active && m_app_state->hopper_mode != HopperMode::FOCUS) {
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_app_state->last_switch_time);
@@ -171,9 +129,7 @@ void RadioPlayer::checkForAutomaticFocusMode() {
 
 void RadioPlayer::handleInput(int ch) {
     if (m_app_state->copy_mode_active) {
-        m_app_state->copy_mode_active = false;
-        m_ui->setInputTimeout(m_app_state->auto_hop_mode_active ? DISCOVERY_MODE_REFRESH_MS : NORMAL_MODE_REFRESH_MS);
-        m_app_state->needs_redraw = true;
+        onCopyMode(); // Any key exits copy mode
         return;
     }
 
@@ -202,16 +158,14 @@ void RadioPlayer::onUpArrow() {
         m_station_manager->post(Msg::SetHopperMode{HopperMode::BALANCED});
     }
 
-    const auto& stations = m_station_manager->getStations();
     if (m_app_state->active_panel == ActivePanel::STATIONS) {
+        const auto& stations = m_station_manager->getStations();
         int old_idx = m_app_state->active_station_idx;
         int new_idx = (old_idx > 0) ? old_idx - 1 : static_cast<int>(stations.size()) - 1;
         m_station_manager->post(Msg::SwitchStation{old_idx, new_idx});
         m_app_state->active_station_idx = new_idx;
-        
         m_app_state->nav_history.push_back({NavDirection::UP, std::chrono::steady_clock::now()});
         if (m_app_state->nav_history.size() > MAX_NAV_HISTORY) m_app_state->nav_history.pop_front();
-        
         m_station_manager->post(Msg::UpdateActiveWindow{});
         m_app_state->history_scroll_offset = 0;
     } else {
@@ -224,22 +178,21 @@ void RadioPlayer::onDownArrow() {
         m_station_manager->post(Msg::SetHopperMode{HopperMode::BALANCED});
     }
 
-    const auto& stations = m_station_manager->getStations();
     if (m_app_state->active_panel == ActivePanel::STATIONS) {
+        const auto& stations = m_station_manager->getStations();
         int old_idx = m_app_state->active_station_idx;
         int new_idx = (old_idx < static_cast<int>(stations.size()) - 1) ? old_idx + 1 : 0;
         m_station_manager->post(Msg::SwitchStation{old_idx, new_idx});
         m_app_state->active_station_idx = new_idx;
-        
         m_app_state->nav_history.push_back({NavDirection::DOWN, std::chrono::steady_clock::now()});
         if (m_app_state->nav_history.size() > MAX_NAV_HISTORY) m_app_state->nav_history.pop_front();
-
         m_station_manager->post(Msg::UpdateActiveWindow{});
         m_app_state->history_scroll_offset = 0;
     } else {
-        const auto& current_station_name = stations[m_app_state->active_station_idx].getName();
-        size_t history_size = m_app_state->getStationHistorySize(current_station_name);
-        if (history_size > 0 && m_app_state->history_scroll_offset < (int)history_size - 1) {
+        const auto& stations = m_station_manager->getStations();
+        const auto& name = stations[m_app_state->active_station_idx].getName();
+        size_t size = m_app_state->getStationHistorySize(name);
+        if (size > 0 && m_app_state->history_scroll_offset < (int)size - 1) {
             m_app_state->history_scroll_offset++;
         }
     }
@@ -257,13 +210,9 @@ void RadioPlayer::onToggleAutoHopMode() {
         m_app_state->auto_hop_start_time = std::chrono::steady_clock::now();
         const auto& stations = m_station_manager->getStations();
         if(!stations.empty()) {
-            const RadioStream& current_station = stations[m_app_state->active_station_idx];
-            PlaybackState current_state = current_station.getPlaybackState();
-            if (current_state == PlaybackState::Muted || current_state == PlaybackState::Ducked) {
-                m_station_manager->post(Msg::ToggleMute{m_app_state->active_station_idx});
-            } else if (current_station.getCurrentVolume() < 50.0) {
-                 m_station_manager->post(Msg::SwitchStation{m_app_state->active_station_idx, m_app_state->active_station_idx});
-            }
+            const RadioStream& station = stations[m_app_state->active_station_idx];
+            if (station.getPlaybackState() != PlaybackState::Playing) onEnter();
+            else if (station.getCurrentVolume() < 50.0) m_station_manager->post(Msg::SwitchStation{m_app_state->active_station_idx, m_app_state->active_station_idx});
         }
     } else {
         m_ui->setInputTimeout(NORMAL_MODE_REFRESH_MS);
@@ -279,18 +228,18 @@ void RadioPlayer::onToggleDucking() {
 }
 
 void RadioPlayer::onCopyMode() {
-    m_app_state->copy_mode_active = true;
-    m_app_state->copy_mode_start_time = std::chrono::steady_clock::now();
-    m_ui->setInputTimeout(COPY_MODE_REFRESH_MS);
+    m_app_state->copy_mode_active = !m_app_state->copy_mode_active;
+    if (m_app_state->copy_mode_active) {
+        m_app_state->copy_mode_start_time = std::chrono::steady_clock::now();
+        m_ui->setInputTimeout(COPY_MODE_REFRESH_MS);
+    } else {
+        m_ui->setInputTimeout(m_app_state->auto_hop_mode_active ? DISCOVERY_MODE_REFRESH_MS : NORMAL_MODE_REFRESH_MS);
+    }
 }
 
 void RadioPlayer::onToggleHopperMode() {
-    HopperMode current_mode = m_app_state->hopper_mode;
-    if (current_mode == HopperMode::BALANCED || current_mode == HopperMode::FOCUS) {
-        m_station_manager->post(Msg::SetHopperMode{HopperMode::PERFORMANCE});
-    } else if (current_mode == HopperMode::PERFORMANCE) {
-        m_station_manager->post(Msg::SetHopperMode{HopperMode::BALANCED});
-    }
+    HopperMode next_mode = (m_app_state->hopper_mode == HopperMode::PERFORMANCE) ? HopperMode::BALANCED : HopperMode::PERFORMANCE;
+    m_station_manager->post(Msg::SetHopperMode{next_mode});
 }
 
 void RadioPlayer::onQuit() {

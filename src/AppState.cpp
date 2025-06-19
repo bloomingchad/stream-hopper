@@ -14,7 +14,7 @@ AppState::AppState()
       session_switches(0),
       new_songs_found(0),
       songs_copied(0),
-      unsaved_history_count(0) // NEW: Initialize the counter
+      unsaved_history_count(0)
 {
   m_song_history = std::make_unique<json>(json::object());
 }
@@ -32,7 +32,7 @@ void AppState::setHistory(json&& history_data) {
 
 json AppState::getFullHistory() const {
     std::lock_guard<std::mutex> lock(m_history_mutex);
-    return *m_song_history; // Return a copy for thread-safe saving
+    return *m_song_history;
 }
 
 void AppState::addHistoryEntry(const std::string& station_name, const json& entry) {
@@ -43,9 +43,9 @@ void AppState::addHistoryEntry(const std::string& station_name, const json& entr
 json AppState::getStationHistory(const std::string& station_name) const {
     std::lock_guard<std::mutex> lock(m_history_mutex);
     if (m_song_history->contains(station_name)) {
-        return (*m_song_history)[station_name]; // Return a copy (snapshot)
+        return (*m_song_history)[station_name];
     }
-    return json::array(); // Return an empty array if station has no history
+    return json::array();
 }
 
 size_t AppState::getStationHistorySize(const std::string& station_name) const {
