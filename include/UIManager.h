@@ -4,11 +4,17 @@
 
 #include <vector>
 #include <string>
-#include <atomic> // <-- NEW
+#include <atomic>
+#include <memory>
 
-// Forward declaration
+// Forward declarations
 class RadioStream;
 class AppState;
+class StationsPanel;
+class NowPlayingPanel;
+class HistoryPanel;
+class HeaderBar;
+class FooterBar;
 
 class UIManager {
 public:
@@ -22,30 +28,20 @@ public:
     void setInputTimeout(int milliseconds);
 
 private:
-    void draw_header_bar(int width, double current_volume, const AppState& app_state);
-
-    void draw_footer_bar(int y, int width, bool is_compact, const AppState& app_state);
-
     void draw_compact_mode(int width, int height, const std::vector<RadioStream>& stations, const AppState& app_state,
                            int remaining_seconds, int total_duration);
     
     void draw_full_mode(int width, int height, const std::vector<RadioStream>& stations, const AppState& app_state,
                         int remaining_seconds, int total_duration);
     
-    void draw_stations_panel(int y, int x, int w, int h, const std::vector<RadioStream>& stations, 
-                             const AppState& app_state, bool is_focused);
-    
-    void draw_now_playing_panel(int y, int x, int w, int h, const RadioStream& station, bool is_auto_hop_mode,
-                                int remaining_seconds, int total_duration);
-    
-    void draw_history_panel(int y, int x, int w, int h, const RadioStream& station, 
-                            const AppState& app_state, bool is_focused);
-                            
-    void draw_box(int y, int x, int w, int h, const std::string& title, bool is_focused);
+    // UI Components
+    std::unique_ptr<HeaderBar> m_header_bar;
+    std::unique_ptr<FooterBar> m_footer_bar;
+    std::unique_ptr<StationsPanel> m_stations_panel;
+    std::unique_ptr<NowPlayingPanel> m_now_playing_panel;
+    std::unique_ptr<HistoryPanel> m_history_panel;
 
-    mutable int m_station_scroll_offset;
-
-    // --- NEW: Signal handling for resize ---
+    // Signal handling for resize
     static std::atomic<bool> s_resize_pending;
     static void handle_resize(int signum);
 };
