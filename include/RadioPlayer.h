@@ -4,6 +4,8 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <map>
+#include <functional>
 
 #include "AppState.h" // Include new class
 
@@ -24,17 +26,26 @@ private:
     int getRemainingSecondsForCurrentStation();
     int getStationSwitchDuration();
 
+    // --- State Update Helpers ---
+    void handleCopyModeTimeout();
+    void handleAutoHopTimer();
+    void checkForForgottenMute();
+    void checkForAutomaticFocusMode();
+
     // --- Input Handler Helpers ---
     void onUpArrow();
     void onDownArrow();
     void onEnter();
-    void onToggleAutoHopMode(); // <-- THIS LINE WAS THE FIX
+    void onToggleAutoHopMode();
     void onToggleFavorite();
     void onToggleDucking();
     void onCopyMode();
     void onToggleHopperMode();
     void onQuit();
     void onSwitchPanel();
+
+    // --- Input Handler Map ---
+    std::map<int, std::function<void()>> m_input_handlers;
 
     std::unique_ptr<UIManager> m_ui;
     std::unique_ptr<AppState> m_app_state;

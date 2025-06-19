@@ -92,46 +92,41 @@ void StationManager::post(StationManagerMessage message) {
 
 void StationManager::actorLoop() {
     post(Msg::UpdateActiveWindow{}); // Initial load
-
-    while (true) {
-        StationManagerMessage message;
-        {
-            std::unique_lock<std::mutex> lock(m_queue_mutex);
-            m_queue_cond.wait(lock, [this] { return !m_message_queue.empty(); });
-            message = std::move(m_message_queue.front());
-            m_message_queue.pop_front();
-        }
-
-        bool should_quit = false;
-        std::visit([&](auto&& arg) {
-            using T = std::decay_t<decltype(arg)>;
-            if      constexpr (std::is_same_v<T, Msg::SwitchStation>)      { handle_switchStation(arg.old_idx, arg.new_idx); }
-            else if constexpr (std::is_same_v<T, Msg::ToggleMute>)         { handle_toggleMute(arg.station_idx); }
-            else if constexpr (std::is_same_v<T, Msg::ToggleDucking>)     { handle_toggleDucking(arg.station_idx); }
-            else if constexpr (std::is_same_v<T, Msg::ToggleFavorite>)    { handle_toggleFavorite(arg.station_idx); }
-            else if constexpr (std::is_same_v<T, Msg::SetHopperMode>)      { handle_setHopperMode(arg.new_mode); }
-            else if constexpr (std::is_same_v<T, Msg::UpdateActiveWindow>) { handle_updateActiveWindow(); }
-            else if constexpr (std::is_same_v<T, Msg::SaveHistory>)       { handle_saveHistory(); } // NEW
-            else if constexpr (std::is_same_v<T, Msg::Shutdown>)          { should_quit = true; }
-        }, message);
-
-        if (should_quit) {
-            // Iterate over the set to shut down the stations...
-            for (int station_idx : m_active_station_indices) {
-                m_stations[station_idx].shutdown();
-            }
-            // ...then clear the set *after* the loop is finished.
-            m_active_station_indices.clear();
-            break;
-        }
-
-        // Poll for any pending MPV events after handling our own message
-        pollMpvEvents();
-        cleanupFinishedFutures();
+    while (processNextMessage()) {
+        // Loop continues as long as processNextMessage returns true.
     }
 }
 
-// --- NEW Message Handler ---
+bool StationManager::processNextMessage() {
+    StationManagerMessage message;
+    {
+        std::unique_lock<std::mutex> lock(m_queue_mutex);
+        m_queue_cond.wait(lock, [this] { return !m_message_queue.empty(); });
+        message = std::move(m_message_queue.front());
+        m_message_queue.pop_front();
+    }
+
+    bool should_continue = true;
+    std::visit([&](auto&& arg) {
+        using T = std::decay_t<decltype(arg)>;
+        if      constexpr (std::is_same_v<T, Msg::SwitchStation>)      { handle_switchStation(arg.old_idx, arg.new_idx); }
+        else if constexpr (std::is_same_v<T, Msg::ToggleMute>)         { handle_toggleMute(arg.station_idx); }
+        else if constexpr (std::is_same_v<T, Msg::ToggleDucking>)     { handle_toggleDucking(arg.station_idx); }
+        else if constexpr (std::is_same_v<T, Msg::ToggleFavorite>)    { handle_toggleFavorite(arg.station_idx); }
+        else if constexpr (std::is_same_v<T, Msg::SetHopperMode>)      { handle_setHopperMode(arg.new_mode); }
+        else if constexpr (std::is_same_v<T, Msg::UpdateActiveWindow>) { handle_updateActiveWindow(); }
+        else if constexpr (std::is_same_v<T, Msg::SaveHistory>)       { handle_saveHistory(); }
+        else if constexpr (std::is_same_v<T, Msg::Shutdown>)          { handle_shutdown(); should_continue = false; }
+    }, message);
+
+    if (should_continue) {
+        pollMpvEvents();
+        cleanupFinishedFutures();
+    }
+
+    return should_continue;
+}
+
 void StationManager::handle_saveHistory() {
     PersistenceManager persistence;
     persistence.saveHistory(m_app_state.getFullHistory());
@@ -139,13 +134,19 @@ void StationManager::handle_saveHistory() {
     m_app_state.unsaved_history_count = 0;
 }
 
+void StationManager::handle_shutdown() {
+    for (int station_idx : m_active_station_indices) {
+        m_stations[station_idx].shutdown();
+    }
+    m_active_station_indices.clear();
+}
 
 void StationManager::pollMpvEvents() {
     bool events_pending = true;
     while(events_pending) {
         events_pending = false;
-        // Create a copy to iterate over, in case m_active_station_indices is modified by an event handler
-        const auto indices_to_poll = m_active_station_indices;
+        // --- FIX: Use a const reference to avoid an expensive copy ---
+        const auto& indices_to_poll = m_active_station_indices;
         for(int station_idx : indices_to_poll) { 
             if (station_idx >= (int)m_stations.size() || !m_stations[station_idx].isInitialized()) {
                 continue;
@@ -278,6 +279,13 @@ void StationManager::shutdownStation(int station_idx) {
     m_active_station_indices.erase(station_idx);
 }
 
+bool StationManager::isFadeStillValid(const RadioStream& station, int captured_generation, double target_volume) const {
+    if (m_app_state.quit_flag) return false;
+    if (station.getGeneration() != captured_generation) return false;
+    if (std::abs(station.getTargetVolume() - target_volume) > 0.01) return false;
+    return true;
+}
+
 void StationManager::fadeAudio(RadioStream& station, double from_vol, double to_vol, int duration_ms) {
     if (!station.isInitialized()) return;
     station.setFading(true);
@@ -289,24 +297,28 @@ void StationManager::fadeAudio(RadioStream& station, double from_vol, double to_
         const int step_delay_ms = duration_ms > 0 ? duration_ms / steps : 0;
         const double vol_step = (steps > 0) ? (to_vol - from_vol) / steps : (to_vol - from_vol);
         double current_vol = from_vol;
+        
         for (int i = 0; i < steps; ++i) {
-            if (m_app_state.quit_flag || station.getGeneration() != captured_generation || std::abs(station.getTargetVolume() - to_vol) > 0.01) return;
+            if (!isFadeStillValid(station, captured_generation, to_vol)) return;
+
             current_vol += vol_step;
             station.setCurrentVolume(current_vol);
             double clamped_vol = std::max(0.0, std::min(100.0, current_vol));
             if (station.getMpvHandle()) {
                 mpv_set_property_async(station.getMpvHandle(), 0, "volume", MPV_FORMAT_DOUBLE, &clamped_vol);
             }
-            m_app_state.needs_redraw = true; // Signal redraw for smooth animation
+            m_app_state.needs_redraw = true;
             std::this_thread::sleep_for(std::chrono::milliseconds(step_delay_ms));
         }
-        if (!m_app_state.quit_flag && station.getGeneration() == captured_generation && std::abs(station.getTargetVolume() - to_vol) <= 0.01) {
+
+        if (isFadeStillValid(station, captured_generation, to_vol)) {
             station.setCurrentVolume(to_vol);
             double final_vol = std::max(0.0, std::min(100.0, to_vol));
             if (station.getMpvHandle()) {
                mpv_set_property_async(station.getMpvHandle(), 0, "volume", MPV_FORMAT_DOUBLE, &final_vol);
             }
         }
+        
         if (station.getGeneration() == captured_generation) {
              station.setFading(false);
         }

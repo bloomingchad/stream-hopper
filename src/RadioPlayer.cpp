@@ -23,6 +23,28 @@ RadioPlayer::RadioPlayer(const std::vector<std::pair<std::string, std::vector<st
     m_app_state = std::make_unique<AppState>();
     m_station_manager = std::make_unique<StationManager>(station_data, *m_app_state);
     m_ui = std::make_unique<UIManager>();
+
+    m_input_handlers = {
+        {KEY_UP,       [this]{ onUpArrow(); }},
+        {KEY_DOWN,     [this]{ onDownArrow(); }},
+        {KEY_ENTER,    [this]{ onEnter(); }},
+        {'\n',         [this]{ onEnter(); }},
+        {'\r',         [this]{ onEnter(); }},
+        {'a',          [this]{ onToggleAutoHopMode(); }},
+        {'A',          [this]{ onToggleAutoHopMode(); }},
+        {'f',          [this]{ onToggleFavorite(); }},
+        {'F',          [this]{ onToggleFavorite(); }},
+        {'d',          [this]{ onToggleDucking(); }},
+        {'D',          [this]{ onToggleDucking(); }},
+        {'c',          [this]{ onCopyMode(); }},
+        {'C',          [this]{ onCopyMode(); }},
+        {'p',          [this]{ onToggleHopperMode(); }},
+        {'P',          [this]{ onToggleHopperMode(); }},
+        {'q',          [this]{ onQuit(); }},
+        {'Q',          [this]{ onQuit(); }},
+        {'\t',         [this]{ onSwitchPanel(); }},
+        {KEY_RESIZE,   []{} }
+    };
 }
 
 RadioPlayer::~RadioPlayer() {
@@ -43,8 +65,6 @@ RadioPlayer::~RadioPlayer() {
     //    access AppState to print the final summary.
     auto end_time = std::chrono::steady_clock::now();
     auto duration_seconds = std::chrono::duration_cast<std::chrono::seconds>(end_time - m_app_state->session_start_time).count();
-
-    // The logic for 'forgot_mute' was removed, so the variable is no longer needed.
     
     long duration_minutes = duration_seconds / 60;
     std::cout << "---\n"
@@ -60,8 +80,6 @@ void RadioPlayer::run() {
     m_app_state->needs_redraw = true;
 
     while (!m_app_state->quit_flag) {
-        // 1. First, check if a redraw is needed from any source (user input, timers, background threads).
-        // This ensures the UI is always up-to-date before we wait for new input.
         if (m_app_state->needs_redraw.exchange(false)) {
             m_ui->draw(m_station_manager->getStations(), *m_app_state,
                        getRemainingSecondsForCurrentStation(), getStationSwitchDuration());
@@ -80,10 +98,16 @@ void RadioPlayer::run() {
     }
 }
 
+// --- REFACTORED: updateState is now a clean dispatcher ---
 void RadioPlayer::updateState() {
-    const auto& stations = m_station_manager->getStations();
-    
-    // Handle copy mode timeout
+    handleCopyModeTimeout();
+    handleAutoHopTimer();
+    checkForForgottenMute();
+    checkForAutomaticFocusMode();
+}
+
+// --- NEW HELPER: Handles the timeout for copy mode ---
+void RadioPlayer::handleCopyModeTimeout() {
     if (m_app_state->copy_mode_active) {
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_app_state->copy_mode_start_time);
@@ -93,9 +117,12 @@ void RadioPlayer::updateState() {
             m_ui->setInputTimeout(m_app_state->auto_hop_mode_active ? DISCOVERY_MODE_REFRESH_MS : NORMAL_MODE_REFRESH_MS);
         }
     }
+}
 
-    // Handle auto-hop mode timer
+// --- NEW HELPER: Handles the station switch timer for auto-hop mode ---
+void RadioPlayer::handleAutoHopTimer() {
     if (m_app_state->auto_hop_mode_active) {
+        const auto& stations = m_station_manager->getStations();
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_app_state->auto_hop_start_time);
         
@@ -108,11 +135,14 @@ void RadioPlayer::updateState() {
             m_station_manager->post(Msg::UpdateActiveWindow{});
 
             m_app_state->auto_hop_start_time = std::chrono::steady_clock::now();
-            m_app_state->needs_redraw = true; // Need to redraw the timer
+            m_app_state->needs_redraw = true;
         }
     }
-    
-    // Check for forgotten mute
+}
+
+// --- NEW HELPER: Checks if the user has left the app muted for too long ---
+void RadioPlayer::checkForForgottenMute() {
+    const auto& stations = m_station_manager->getStations();
     if (!m_app_state->auto_hop_mode_active && !stations.empty()) {
         const RadioStream& active_station = stations[m_app_state->active_station_idx];
         if (active_station.getPlaybackState() == PlaybackState::Muted) {
@@ -126,8 +156,10 @@ void RadioPlayer::updateState() {
             }
         }
     }
+}
 
-    // Check for automatic focus mode
+// --- NEW HELPER: Switches to Focus mode after a period of inactivity ---
+void RadioPlayer::checkForAutomaticFocusMode() {
     if (!m_app_state->auto_hop_mode_active && m_app_state->hopper_mode != HopperMode::FOCUS) {
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_app_state->last_switch_time);
@@ -145,23 +177,11 @@ void RadioPlayer::handleInput(int ch) {
         return;
     }
 
-    switch (ch) {
-        case KEY_UP:        onUpArrow();            break;
-        case KEY_DOWN:      onDownArrow();          break;
-        case '\n': case '\r': case KEY_ENTER: onEnter(); break;
-        case 'a': case 'A': onToggleAutoHopMode();  break;
-        case 'f': case 'F': onToggleFavorite();     break;
-        case 'd': case 'D': onToggleDucking();      break;
-        case 'c': case 'C': onCopyMode();           break;
-        case 'p': case 'P': onToggleHopperMode();   break;
-        case 'q': case 'Q': onQuit();               break;
-        case '\t':          onSwitchPanel();        break;
-        case KEY_RESIZE:    /* Handled by redraw flag */ break;
-        default:            return;
+    auto it = m_input_handlers.find(ch);
+    if (it != m_input_handlers.end()) {
+        it->second();
+        m_app_state->needs_redraw = true;
     }
-    
-    // Every valid action should trigger a redraw
-    m_app_state->needs_redraw = true;
 }
 
 int RadioPlayer::getStationSwitchDuration() {

@@ -2,7 +2,7 @@
 #define STATIONMANAGER_H
 
 #include "RadioStream.h"
-#include "Core/PreloadStrategy.h" // NEW INCLUDE
+#include "Core/PreloadStrategy.h"
 #include "AppState.h"
 #include <string>
 #include <vector>
@@ -27,11 +27,10 @@ namespace Msg {
     struct ToggleFavorite { int station_idx; };
     struct SetHopperMode { HopperMode new_mode; };
     struct UpdateActiveWindow {};
-    struct SaveHistory {}; // NEW: Message to trigger a history save
+    struct SaveHistory {};
     struct Shutdown {};
 }
 
-// A type-safe container for any possible message
 using StationManagerMessage = std::variant<
     Msg::SwitchStation,
     Msg::ToggleMute,
@@ -39,7 +38,7 @@ using StationManagerMessage = std::variant<
     Msg::ToggleFavorite,
     Msg::SetHopperMode,
     Msg::UpdateActiveWindow,
-    Msg::SaveHistory, // NEW
+    Msg::SaveHistory,
     Msg::Shutdown
 >;
 
@@ -51,12 +50,12 @@ public:
 
     // The ONLY public method to interact with the manager. It's thread-safe.
     void post(StationManagerMessage message);
-
     const std::vector<RadioStream>& getStations() const;
 
 private:
     // --- The Actor's own thread and event loop ---
     void actorLoop();
+    bool processNextMessage(); // NEW: Helper to process one message from the queue.
     void pollMpvEvents();
 
     // --- Private message handlers. These are NOT thread-safe and are only ever called by the actorLoop ---
@@ -66,7 +65,8 @@ private:
     void handle_toggleFavorite(int station_idx);
     void handle_setHopperMode(HopperMode new_mode);
     void handle_updateActiveWindow();
-    void handle_saveHistory(); // NEW: Handler for the message
+    void handle_saveHistory();
+    void handle_shutdown(); // NEW: Specific handler for shutdown logic.
 
     // --- Private MPV event handlers (called by the actor thread) ---
     void handleMpvEvent(mpv_event* event);
@@ -80,6 +80,7 @@ private:
     
     // --- Other private helpers (called by the actor thread) ---
     void fadeAudio(RadioStream& station, double from_vol, double to_vol, int duration_ms);
+    bool isFadeStillValid(const RadioStream& station, int captured_generation, double target_volume) const;
     RadioStream* findStationById(int station_id);
     bool contains_ci(const std::string& haystack, const std::string& needle);
     void cleanupFinishedFutures();
@@ -89,18 +90,17 @@ private:
     // --- State (only accessed by the actor thread) ---
     std::vector<RadioStream> m_stations;
     AppState& m_app_state;
-    Strategy::Preloader m_preloader; // NEW MEMBER
+    Strategy::Preloader m_preloader;
     std::unordered_set<int> m_active_station_indices;
 
     // --- Actor components ---
     std::thread m_actor_thread;
     std::deque<StationManagerMessage> m_message_queue;
-    std::mutex m_queue_mutex; // The ONLY mutex needed for major state changes.
+    std::mutex m_queue_mutex;
     std::condition_variable m_queue_cond;
 
-    // --- Other async management ---
     std::vector<std::future<void>> m_fade_futures;
-    std::mutex m_fade_futures_mutex; // Kept separate for fine-grained locking on futures.
+    std::mutex m_fade_futures_mutex;
 };
 
 #endif // STATIONMANAGER_H

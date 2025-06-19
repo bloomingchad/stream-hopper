@@ -4,6 +4,7 @@
 #include "AppState.h" // For HopperMode and NavEvent
 #include <unordered_set>
 #include <vector>
+#include <utility> // For std::pair
 
 namespace Strategy {
 
@@ -21,6 +22,11 @@ public:
         HopperMode hopper_mode,
         const std::deque<NavEvent>& nav_history
     ) const;
+
+private:
+    // Determines the number of stations to preload up and down,
+    // accounting for navigation acceleration.
+    std::pair<int, int> getPreloadCounts(const std::deque<NavEvent>& nav_history) const;
 };
 
 } // namespace Strategy
