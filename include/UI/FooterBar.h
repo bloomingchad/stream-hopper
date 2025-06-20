@@ -3,12 +3,9 @@
 
 #include "UI/Panel.h"
 
-// Forward declarations
-class AppState;
-
 class FooterBar : public Panel {
 public:
-    void draw(bool is_compact, const AppState& app_state);
+    void draw(bool is_compact, bool is_copy_mode_active, bool is_auto_hop_mode_active);
 };
 
 #endif // FOOTERBAR_H

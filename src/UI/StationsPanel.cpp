@@ -1,7 +1,7 @@
 #include "UI/StationsPanel.h"
-#include "UI/StationSnapshot.h"
-#include "AppState.h"
+#include "UI/StateSnapshot.h" // For StationDisplayData
 #include "UI/UIUtils.h"
+#include "RadioStream.h" // For PlaybackState
 #include <ncurses.h>
 
 StationsPanel::StationsPanel() : m_station_scroll_offset(0) {}
@@ -46,10 +46,9 @@ void StationsPanel::drawStationLine(int y, const StationDisplayData& station, bo
     }
 }
 
-void StationsPanel::draw(const std::vector<StationDisplayData>& stations, const AppState& app_state, bool is_focused) {
+void StationsPanel::draw(const std::vector<StationDisplayData>& stations, int active_station_idx, bool is_focused) {
     draw_box(m_y, m_x, m_w, m_h, "STATIONS", is_focused);
     int inner_w = m_w - 4;
-    int active_station_idx = app_state.active_station_idx;
 
     int visible_items = m_h > 2 ? m_h - 2 : 0;
     if (active_station_idx < m_station_scroll_offset) {

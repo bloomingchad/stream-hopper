@@ -6,39 +6,26 @@
 #include <memory>
 #include <map>
 #include <functional>
-#include "AppState.h" 
 
 class UIManager;
 class StationManager;
+#include "StationManager.h" // For StationManagerMessage
 
 class RadioPlayer {
 public:
-    RadioPlayer(const std::vector<std::pair<std::string, std::vector<std::string>>>& station_data);
+    // Now takes a reference to the already-created manager
+    RadioPlayer(StationManager& manager);
     ~RadioPlayer();
 
     void run();
 
 private:
     void handleInput(int ch);
-    void updateState();
-    int getRemainingSecondsForCurrentStation() const;
-    int getStationSwitchDuration(size_t station_count) const;
 
-    void onUpArrow();
-    void onDownArrow();
-    void onEnter();
-    void onToggleAutoHopMode();
-    void onToggleFavorite();
-    void onToggleDucking();
-    void onCopyMode();
-    void onToggleHopperMode();
-    void onQuit();
-    void onSwitchPanel();
-
-    std::map<int, std::function<void()>> m_input_handlers;
+    std::map<int, StationManagerMessage> m_input_handlers;
     std::unique_ptr<UIManager> m_ui;
-    std::unique_ptr<AppState> m_app_state;
-    std::unique_ptr<StationManager> m_station_manager;
+    // StationManager is now the owner of all state, we just talk to it.
+    StationManager& m_station_manager;
 };
 
 #endif // RADIOPLAYER_H

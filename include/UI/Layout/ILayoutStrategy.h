@@ -7,7 +7,7 @@ class FooterBar;
 class StationsPanel;
 class NowPlayingPanel;
 class HistoryPanel;
-class AppState;
+struct StateSnapshot;
 
 class ILayoutStrategy {
 public:
@@ -17,7 +17,7 @@ public:
         int width, int height,
         HeaderBar& header, FooterBar& footer,
         StationsPanel& stations, NowPlayingPanel& now_playing, HistoryPanel& history,
-        const AppState& app_state
+        const StateSnapshot& snapshot
     ) = 0;
 };
 

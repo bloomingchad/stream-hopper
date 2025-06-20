@@ -7,26 +7,25 @@
 #include <memory>
 
 // Forward declarations
-class AppState;
 class StationsPanel;
 class NowPlayingPanel;
 class HistoryPanel;
 class HeaderBar;
 class FooterBar;
 class ILayoutStrategy;
-struct StationSnapshot; // Use forward declaration
+struct StateSnapshot; // The one and only data source
 
 class UIManager {
 public:
     UIManager();
     ~UIManager();
 
-    // The signature now takes the atomic snapshot struct.
-    void draw(const StationSnapshot& snapshot, const AppState& app_state,
-              int remaining_seconds, int total_duration);
+    // The signature is now much simpler. It only needs the snapshot.
+    void draw(const StateSnapshot& snapshot);
 
     int getInput();
     void setInputTimeout(int milliseconds);
+    void handleResize();
 
 private:
     void updateLayoutStrategy(int width);
@@ -42,9 +41,9 @@ private:
     std::unique_ptr<ILayoutStrategy> m_layout_strategy;
     bool m_is_compact_mode;
 
-    // Signal handling for resize
+    // Signal handling for resize is now instance-based
     static std::atomic<bool> s_resize_pending;
-    static void handle_resize(int signum);
+    static void resize_handler_trampoline(int signum);
 };
 
 #endif // UIMANAGER_H

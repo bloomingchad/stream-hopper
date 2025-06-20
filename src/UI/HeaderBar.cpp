@@ -1,5 +1,4 @@
 #include "UI/HeaderBar.h"
-#include "AppState.h"
 #include "UI/UIUtils.h"
 #include <ncurses.h>
 #include <string>
@@ -7,14 +6,14 @@
 #include <ctime>
 #include <iomanip>
 
-void HeaderBar::draw(double current_volume, const AppState& app_state) {
+void HeaderBar::draw(double current_volume, HopperMode hopper_mode) {
     time_t now = time(0);
     tm* ltm = localtime(&now);
     std::stringstream time_ss;
     time_ss << std::put_time(ltm, "%H:%M");
     
     std::string mode_str;
-    switch(app_state.hopper_mode) {
+    switch(hopper_mode) {
         case HopperMode::BALANCED:
             mode_str = "🍃 Balanced";
             break;

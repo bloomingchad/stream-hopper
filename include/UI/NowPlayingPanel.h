@@ -2,10 +2,10 @@
 #define NOWPLAYINGPANEL_H
 
 #include "UI/Panel.h"
+#include "nlohmann/json.hpp" // <-- FIX: Add the missing include here
 
 // Forward declarations
 struct StationDisplayData;
-class AppState;
 
 class NowPlayingPanel : public Panel {
 public:

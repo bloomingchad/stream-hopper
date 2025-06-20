@@ -10,7 +10,7 @@ public:
         int width, int height,
         HeaderBar& header, FooterBar& footer,
         StationsPanel& stations, NowPlayingPanel& now_playing, HistoryPanel& history,
-        const AppState& app_state
+        const StateSnapshot& snapshot
     ) override;
 };
 

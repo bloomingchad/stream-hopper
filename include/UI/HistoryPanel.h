@@ -2,14 +2,13 @@
 #define HISTORYPANEL_H
 
 #include "UI/Panel.h"
+#include "nlohmann/json.hpp"
 
-// Forward declarations
 struct StationDisplayData;
-class AppState;
 
 class HistoryPanel : public Panel {
 public:
-    void draw(const StationDisplayData& station, const AppState& app_state, bool is_focused);
+    void draw(const StationDisplayData& station, const nlohmann::json& station_history, int scroll_offset, bool is_focused);
 };
 
 #endif // HISTORYPANEL_H

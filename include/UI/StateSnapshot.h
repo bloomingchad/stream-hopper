@@ -6,6 +6,7 @@
 #include <chrono>
 #include "RadioStream.h" // For PlaybackState enum
 #include "AppState.h"    // For HopperMode, ActivePanel enums
+#include "nlohmann/json.hpp" // <-- CRITICAL FIX: Include the JSON library header
 
 // A plain-old-data struct containing only what the UI needs to render a single station.
 struct StationDisplayData {

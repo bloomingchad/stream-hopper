@@ -8,17 +8,12 @@
 
 // Forward declarations
 class RadioStream;
-class AppState;
-class StationManager; // Only needed for StationManagerMessage, but variant is complex
-#include "StationManager.h" // Keep full include for StationManagerMessage variant
+class StationManager; // The new owner of everything
 
 class MpvEventHandler {
 public:
-    MpvEventHandler(
-        std::vector<RadioStream>& stations,
-        AppState& app_state,
-        std::function<void(StationManagerMessage)> poster
-    );
+    // The handler now only needs a reference to its owner, the StationManager
+    explicit MpvEventHandler(StationManager& manager);
 
     void handleEvent(mpv_event* event);
 
@@ -33,9 +28,8 @@ private:
 
     RadioStream* findStationById(int station_id);
 
-    std::vector<RadioStream>& m_stations;
-    AppState& m_app_state;
-    std::function<void(StationManagerMessage)> m_poster;
+    // A reference to the single source of truth.
+    StationManager& m_manager;
 };
 
 #endif // MPVEVENTHANDLER_H
