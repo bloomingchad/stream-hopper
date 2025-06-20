@@ -2,13 +2,13 @@
 #include <vector>
 #include <string>
 #include <stdexcept>
-#include <fcntl.h> // For open
-#include <unistd.h> // For dup2, close
+#include <fcntl.h>
+#include <unistd.h>
 #include <ctime>
-#include <ncurses.h> // <-- FIX: Add missing ncurses header
+#include <ncurses.h>
 #include "RadioPlayer.h"
 #include "StationManager.h"
-#include "StationList.hpp"
+#include "PersistenceManager.h" // <-- New include
 
 void suppress_stderr() {
     int dev_null = open("/dev/null", O_WRONLY);
@@ -23,14 +23,27 @@ int main() {
     suppress_stderr();
 
     try {
-        StationManager manager(stream_hopper::station_data);
-        RadioPlayer player(manager);
-        player.run();
-    } catch (const std::exception& e) {
-        // FIX: The ncurses functions are only safe to call if ncurses has been initialized.
-        // The UIManager destructor handles this now, so we just need to ensure it's called
-        // by the natural stack unwinding of the 'try' block. We can remove these unsafe calls.
+        // Step 1: Load the station data from the file first.
+        PersistenceManager persistence;
+        StationData station_data = persistence.loadStations();
 
+        // Step 2: Pass the loaded data to the StationManager.
+        StationManager manager(station_data);
+        RadioPlayer player(manager);
+        
+        // Step 3: Run the application.
+        player.run();
+
+    } catch (const std::exception& e) {
+        // Graceful error handling for file I/O or parsing errors.
+        if (stdscr != NULL && !isendwin()) {
+            endwin();
+        }
+        
+        std::cout << "\n\nA critical error occurred during startup:\n" << e.what() << std::endl;
+        std::cout << "The application must close." << std::endl;
+        
+        // Log to file as a fallback.
         FILE* logfile = fopen("stream_hopper_crash.log", "a");
         if (logfile) {
             time_t now = time(0);
@@ -39,8 +52,6 @@ int main() {
             fprintf(logfile, "[%s] Critical Error: %s\n", dt, e.what());
             fclose(logfile);
         }
-        std::cout << "\n\nA critical error occurred: " << e.what() << std::endl;
-        std::cout << "The application must close. Details have been logged to stream_hopper_crash.log" << std::endl;
         return 1;
     }
 

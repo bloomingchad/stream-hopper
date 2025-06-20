@@ -6,13 +6,20 @@
 #include <vector>
 #include <unordered_set>
 #include <optional>
+#include <utility> // For std::pair
 
 // Forward declaration
 class RadioStream;
 
+// A type alias for clarity
+using StationData = std::vector<std::pair<std::string, std::vector<std::string>>>;
+
 class PersistenceManager {
 public:
     PersistenceManager() = default;
+
+    // Station config loading
+    StationData loadStations() const;
 
     // History Persistence
     nlohmann::json loadHistory() const;

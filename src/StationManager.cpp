@@ -1,5 +1,5 @@
 #include "StationManager.h"
-#include "PersistenceManager.h"
+#include "PersistenceManager.h" // For StationData
 #include "Core/MpvEventHandler.h"
 #include "Utils.h"
 #include <algorithm>
@@ -11,7 +11,6 @@
 #include <cmath>
 #include <mpv/client.h>
 
-// ... (namespace with constants is identical)
 namespace {
     constexpr int FADE_TIME_MS = 900;
     constexpr double DUCK_VOLUME = 40.0;
@@ -24,8 +23,7 @@ namespace {
     constexpr int AUTO_HOP_TOTAL_TIME_SECONDS = 1125;
 }
 
-
-StationManager::StationManager(const std::vector<std::pair<std::string, std::vector<std::string>>>& station_data)
+StationManager::StationManager(const StationData& station_data)
     : m_unsaved_history_count(0), m_active_station_idx(0),
       m_copy_mode_active(false), m_active_panel(ActivePanel::STATIONS),
       m_history_scroll_offset(0), m_auto_hop_mode_active(false),
@@ -34,31 +32,50 @@ StationManager::StationManager(const std::vector<std::pair<std::string, std::vec
       m_session_start_time(std::chrono::steady_clock::now()),
       m_session_switches(0), m_new_songs_found(0), m_songs_copied(0),
       m_was_quit_by_mute_timeout(false),
-      m_quit_flag(false), m_needs_redraw(true) // FIX: Initialize flags
+      m_quit_flag(false), m_needs_redraw(true)
 {
-    // ... (rest of constructor is identical)
-    if (station_data.empty()) throw std::runtime_error("No radio stations provided.");
-    for (size_t i = 0; i < station_data.size(); ++i) m_stations.emplace_back(i, station_data[i].first, station_data[i].second.front());
+    if (station_data.empty()) {
+        throw std::runtime_error("No radio stations provided.");
+    }
+
+    for (size_t i = 0; i < station_data.size(); ++i) {
+        m_stations.emplace_back(i, station_data[i].first, station_data[i].second.front());
+    }
+    
     PersistenceManager persistence;
     m_song_history = std::make_unique<nlohmann::json>(persistence.loadHistory());
-    if (!m_song_history->is_object()) *m_song_history = nlohmann::json::object();
+    if (!m_song_history->is_object()) {
+        *m_song_history = nlohmann::json::object();
+    }
+
     const auto favorite_names = persistence.loadFavoriteNames();
     for (auto& station : m_stations) {
-        if (favorite_names.count(station.getName())) station.toggleFavorite();
-        if (!m_song_history->contains(station.getName())) (*m_song_history)[station.getName()] = nlohmann::json::array();
+        if (favorite_names.count(station.getName())) {
+            station.toggleFavorite();
+        }
+        if (!m_song_history->contains(station.getName())) {
+            (*m_song_history)[station.getName()] = nlohmann::json::array();
+        }
     }
+
     if (auto last_station_name = persistence.loadLastStationName()) {
-        auto it = std::find_if(m_stations.begin(), m_stations.end(), [&](const RadioStream& station) { return station.getName() == *last_station_name; });
-        if (it != m_stations.end()) m_active_station_idx = std::distance(m_stations.begin(), it);
+        auto it = std::find_if(m_stations.begin(), m_stations.end(),
+                               [&](const RadioStream& station) { return station.getName() == *last_station_name; });
+        if (it != m_stations.end()) {
+            m_active_station_idx = std::distance(m_stations.begin(), it);
+        }
     }
+
     m_event_handler = std::make_unique<MpvEventHandler>(*this);
     m_actor_thread = std::thread(&StationManager::actorLoop, this);
 }
 
-// ... (Destructor and createSnapshot are identical)
+// ... rest of StationManager.cpp is unchanged ...
 StationManager::~StationManager() {
     post(Msg::Quit{});
-    if (m_actor_thread.joinable()) m_actor_thread.join();
+    if (m_actor_thread.joinable()) {
+        m_actor_thread.join();
+    }
     PersistenceManager persistence;
     persistence.saveHistory(*m_song_history);
     persistence.saveFavorites(m_stations);
@@ -74,6 +91,7 @@ StationManager::~StationManager() {
         std::cout << "---\n" << "Thank you for using Stream Hopper!\n" << "🎛️ Session Switches: " << m_session_switches << "\n" << "✨ New Songs Found: " << m_new_songs_found << "\n" << "📋 Songs Copied: " << m_songs_copied << "\n" << "🕐 Total Time: " << duration_minutes << " minutes\n" << "---" << std::endl;
     }
 }
+
 StateSnapshot StationManager::createSnapshot() const {
     std::lock_guard<std::mutex> lock(m_stations_mutex);
     StateSnapshot snapshot;
@@ -117,9 +135,8 @@ void StationManager::post(StationManagerMessage message) {
 }
 
 std::atomic<bool>& StationManager::getQuitFlag() { return m_quit_flag; }
-std::atomic<bool>& StationManager::getNeedsRedrawFlag() { return m_needs_redraw; } // FIX: Implement getter
+std::atomic<bool>& StationManager::getNeedsRedrawFlag() { return m_needs_redraw; }
 
-// ... (actorLoop is identical)
 void StationManager::actorLoop() {
     updateActiveWindow();
     while(!m_quit_flag) {
@@ -158,10 +175,7 @@ void StationManager::actorLoop() {
     m_active_fades.clear();
 }
 
-
-// --- Message Handlers (all now set m_needs_redraw = true) ---
 void StationManager::handle_navigate(NavDirection direction) {
-    // ... (logic is identical)
     if (m_hopper_mode == HopperMode::FOCUS) m_hopper_mode = HopperMode::BALANCED;
     if (m_active_panel == ActivePanel::STATIONS) {
         if (m_stations.empty()) return;
@@ -189,7 +203,6 @@ void StationManager::handle_navigate(NavDirection direction) {
 }
 
 void StationManager::handle_toggleMute() {
-    // ... (logic is identical)
     if (m_active_station_idx < 0 || m_active_station_idx >= (int)m_stations.size()) return;
     RadioStream& station = m_stations[m_active_station_idx];
     if (!station.isInitialized() || station.getPlaybackState() == PlaybackState::Ducked) return;
@@ -226,7 +239,6 @@ void StationManager::handle_toggleFavorite() {
 }
 
 void StationManager::handle_toggleDucking() {
-    // ... (logic is identical)
     if (m_active_station_idx < 0 || m_active_station_idx >= (int)m_stations.size()) return;
     RadioStream& station = m_stations[m_active_station_idx];
     if (!station.isInitialized() || station.getPlaybackState() == PlaybackState::Muted) return;
@@ -297,9 +309,7 @@ void StationManager::handle_updateAndPoll() {
 
 void StationManager::handle_quit() { m_quit_flag = true; }
 
-// --- Internal Logic ---
 void StationManager::handle_activeFades() {
-    // ... (logic is identical, but now sets the flag if work is done)
     if (m_active_fades.empty()) return;
     auto now = std::chrono::steady_clock::now();
     bool changed = false;
@@ -326,7 +336,6 @@ void StationManager::handle_activeFades() {
     if (changed) m_needs_redraw = true;
 }
 
-// ... (rest of internal logic functions like pollMpvEvents, updateActiveWindow, etc. are identical)
 void StationManager::pollMpvEvents() {
     bool events_pending = true;
     while(events_pending) {
