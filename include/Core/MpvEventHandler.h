@@ -38,7 +38,7 @@ private:
 
     // Utility methods
     RadioStream* findStationById(int station_id);
-    bool contains_ci(const std::string& haystack, const std::string& needle);
+    bool contains_ci(const std::string& haystack, const std::string& needle) const;
 
     // --- State & Communication ---
     // These are references to the state owned by StationManager

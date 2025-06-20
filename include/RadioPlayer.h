@@ -21,8 +21,8 @@ public:
 private:
     void handleInput(int ch);
     void updateState();
-    int getRemainingSecondsForCurrentStation();
-    int getStationSwitchDuration(size_t station_count);
+    int getRemainingSecondsForCurrentStation() const;
+    int getStationSwitchDuration(size_t station_count) const;
 
     void onUpArrow();
     void onDownArrow();

@@ -10,7 +10,7 @@ const std::string FAVORITES_FILENAME = "radio_favorites.json";
 const std::string SESSION_FILENAME = "radio_session.json";
 const std::string HISTORY_FILENAME = "radio_history.json";
 
-json PersistenceManager::loadHistory() {
+json PersistenceManager::loadHistory() const {
     std::ifstream i(HISTORY_FILENAME);
     if (i.is_open()) {
         try {
@@ -26,14 +26,14 @@ json PersistenceManager::loadHistory() {
     return json::object();
 }
 
-void PersistenceManager::saveHistory(const json& history_data) {
+void PersistenceManager::saveHistory(const json& history_data) const {
     std::ofstream o(HISTORY_FILENAME);
     if (o.is_open()) {
         o << std::setw(4) << history_data << std::endl;
     }
 }
 
-std::unordered_set<std::string> PersistenceManager::loadFavoriteNames() {
+std::unordered_set<std::string> PersistenceManager::loadFavoriteNames() const {
     std::unordered_set<std::string> favorite_set;
     std::ifstream i(FAVORITES_FILENAME);
     if (!i.is_open()) return favorite_set;
@@ -52,7 +52,7 @@ std::unordered_set<std::string> PersistenceManager::loadFavoriteNames() {
     return favorite_set;
 }
 
-void PersistenceManager::saveFavorites(const std::vector<RadioStream>& stations) {
+void PersistenceManager::saveFavorites(const std::vector<RadioStream>& stations) const {
     json fav_names = json::array();
     for (const auto &station : stations) {
         if (station.isFavorite()) {
@@ -66,7 +66,7 @@ void PersistenceManager::saveFavorites(const std::vector<RadioStream>& stations)
     }
 }
 
-std::optional<std::string> PersistenceManager::loadLastStationName() {
+std::optional<std::string> PersistenceManager::loadLastStationName() const {
     std::ifstream i(SESSION_FILENAME);
     if (!i.is_open()) return std::nullopt;
 
@@ -82,7 +82,7 @@ std::optional<std::string> PersistenceManager::loadLastStationName() {
     return std::nullopt;
 }
 
-void PersistenceManager::saveSession(const std::string& last_station_name) {
+void PersistenceManager::saveSession(const std::string& last_station_name) const {
     if (last_station_name.empty()) return;
     json session_data;
     session_data["last_station_name"] = last_station_name;

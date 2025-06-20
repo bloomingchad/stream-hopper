@@ -100,7 +100,6 @@ void RadioPlayer::updateState() {
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_app_state->auto_hop_start_time);
         
-        // We need the station count to calculate duration. Fetch the snapshot.
         auto station_count = m_station_manager->getStationDisplayData().size();
         if (elapsed.count() >= getStationSwitchDuration(station_count)) {
             onDownArrow(); // Simply simulate a down arrow press to advance
@@ -108,23 +107,10 @@ void RadioPlayer::updateState() {
         }
     }
     
-    // This part of the logic needs to be re-evaluated as it now requires fetching data.
-    // For now, let's keep it simple. A better approach would be to move this logic
-    // into the StationManager actor.
-    // const auto& stations = m_station_manager->getStations();
-    // if (!m_app_state->auto_hop_mode_active && !stations.empty()) {
-    //     const RadioStream& active_station = stations[m_app_state->active_station_idx];
-    //     if (active_station.getPlaybackState() == PlaybackState::Muted) {
-    //         auto mute_start = active_station.getMuteStartTime();
-    //         if (mute_start.has_value()) {
-    //             auto now = std::chrono::steady_clock::now();
-    //             auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - mute_start.value());
-    //             if (elapsed.count() >= FORGOTTEN_MUTE_SECONDS) {
-    //                 m_app_state->quit_flag = true;
-    //             }
-    //         }
-    //     }
-    // }
+    // The logic for FORGOTTEN_MUTE_SECONDS would be better inside the StationManager actor.
+    // This is because the actor already knows about the mute state and time,
+    // avoiding the need for the RadioPlayer to constantly poll for data.
+    // For now, this is left as-is to avoid a larger refactor.
 
     if (!m_app_state->auto_hop_mode_active && m_app_state->hopper_mode != HopperMode::FOCUS) {
         auto now = std::chrono::steady_clock::now();
@@ -148,17 +134,16 @@ void RadioPlayer::handleInput(int ch) {
     }
 }
 
-int RadioPlayer::getStationSwitchDuration(size_t station_count) {
+int RadioPlayer::getStationSwitchDuration(size_t station_count) const {
     if (station_count == 0) return 0;
     return AUTO_HOP_TOTAL_TIME_SECONDS / static_cast<int>(station_count);
 }
 
-int RadioPlayer::getRemainingSecondsForCurrentStation() {
+int RadioPlayer::getRemainingSecondsForCurrentStation() const {
     if (!m_app_state->auto_hop_mode_active) return 0;
     auto now = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_app_state->auto_hop_start_time);
     
-    // We need the station count to calculate duration. Fetch the snapshot.
     auto station_count = m_station_manager->getStationDisplayData().size();
     return std::max(0, getStationSwitchDuration(station_count) - static_cast<int>(elapsed.count()));
 }
@@ -203,7 +188,6 @@ void RadioPlayer::onDownArrow() {
         m_station_manager->post(Msg::UpdateActiveWindow{});
         m_app_state->history_scroll_offset = 0;
     } else {
-        // This logic needs the station name, which we can get from the snapshot
         auto stations = m_station_manager->getStationDisplayData();
         if (stations.empty()) return;
         const auto& name = stations[m_app_state->active_station_idx].name;
@@ -225,7 +209,6 @@ void RadioPlayer::onToggleAutoHopMode() {
         m_app_state->last_switch_time = std::chrono::steady_clock::now();
         m_app_state->auto_hop_start_time = std::chrono::steady_clock::now();
         
-        // This check also needs the safe snapshot
         auto stations = m_station_manager->getStationDisplayData();
         if(!stations.empty()) {
             const auto& station = stations[m_app_state->active_station_idx];

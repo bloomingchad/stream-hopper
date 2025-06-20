@@ -107,7 +107,8 @@ RadioStream* MpvEventHandler::findStationById(int station_id) {
     auto it = std::find_if(m_stations.begin(), m_stations.end(), [station_id](const RadioStream& s) { return s.getID() == station_id; });
     return (it != m_stations.end()) ? &(*it) : nullptr;
 }
-bool MpvEventHandler::contains_ci(const std::string& haystack, const std::string& needle) {
+
+bool MpvEventHandler::contains_ci(const std::string& haystack, const std::string& needle) const {
     if (needle.empty()) return true;
     auto it = std::search(haystack.begin(), haystack.end(), needle.begin(), needle.end(), [](char ch1, char ch2) { return std::toupper(ch1) == std::toupper(ch2); });
     return (it != haystack.end());
