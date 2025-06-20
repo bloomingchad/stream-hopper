@@ -15,7 +15,7 @@ namespace {
     constexpr int FADE_TIME_MS = 900;
     constexpr double DUCK_VOLUME = 40.0;
     constexpr auto ACTOR_LOOP_TIMEOUT = std::chrono::milliseconds(20);
-    constexpr int FORGOTTEN_MUTE_SECONDS = 6;
+    constexpr int FORGOTTEN_MUTE_SECONDS = 600;
 }
 
 StationManager::StationManager(const std::vector<std::pair<std::string, std::vector<std::string>>>& station_data, AppState& app_state)
@@ -71,13 +71,15 @@ StationManager::~StationManager() {
     }
 }
 
-std::vector<StationDisplayData> StationManager::getStationDisplayData() const {
+StationSnapshot StationManager::createSnapshot() const {
     std::lock_guard<std::mutex> lock(m_stations_mutex);
-    std::vector<StationDisplayData> display_data;
-    display_data.reserve(m_stations.size());
+    
+    StationSnapshot snapshot;
+    snapshot.active_station_idx = m_app_state.active_station_idx.load();
+    snapshot.stations.reserve(m_stations.size());
 
     for (const auto& station : m_stations) {
-        display_data.push_back({
+        snapshot.stations.push_back({
             .name = station.getName(),
             .current_title = station.getCurrentTitle(),
             .bitrate = station.getBitrate(),
@@ -88,9 +90,8 @@ std::vector<StationDisplayData> StationManager::getStationDisplayData() const {
             .playback_state = station.getPlaybackState()
         });
     }
-    return display_data;
+    return snapshot;
 }
-
 
 void StationManager::post(StationManagerMessage message) {
     {
@@ -150,7 +151,7 @@ void StationManager::actorLoop() {
                         auto now = std::chrono::steady_clock::now();
                         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - *mute_start);
                         if (elapsed.count() >= FORGOTTEN_MUTE_SECONDS) {
-                            m_app_state.was_quit_by_mute_timeout = true; // Set new flag
+                            m_app_state.was_quit_by_mute_timeout = true;
                             m_app_state.quit_flag = true;
                         }
                     }

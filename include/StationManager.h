@@ -4,7 +4,7 @@
 #include "RadioStream.h"
 #include "Core/PreloadStrategy.h"
 #include "AppState.h"
-#include "UI/StationDisplayData.h"
+#include "UI/StationSnapshot.h" // New include
 #include <string>
 #include <vector>
 #include <thread>
@@ -46,10 +46,11 @@ public:
     ~StationManager();
 
     void post(StationManagerMessage message);
-    std::vector<StationDisplayData> getStationDisplayData() const;
+    
+    // This is the new, fully-atomic way to get data for the UI.
+    StationSnapshot createSnapshot() const;
 
 private:
-    // A struct to hold the state of an active fade animation
     struct ActiveFade {
         int station_id;
         int generation;
@@ -60,7 +61,6 @@ private:
     };
 
     void actorLoop();
-    void processMessages();
     void handle_activeFades();
     void pollMpvEvents();
     
@@ -79,7 +79,7 @@ private:
 
     mutable std::mutex m_stations_mutex;
     std::vector<RadioStream> m_stations;
-    std::vector<ActiveFade> m_active_fades; // New state for fades
+    std::vector<ActiveFade> m_active_fades;
 
     AppState& m_app_state;
     Strategy::Preloader m_preloader;

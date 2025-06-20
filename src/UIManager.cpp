@@ -1,15 +1,13 @@
 #include "UIManager.h"
 #include "AppState.h"
-#include "UI/StationDisplayData.h"
+#include "UI/StationSnapshot.h"
 
-// UI Components
 #include "UI/HeaderBar.h"
 #include "UI/FooterBar.h"
 #include "UI/StationsPanel.h"
 #include "UI/NowPlayingPanel.h"
 #include "UI/HistoryPanel.h"
 
-// NEW: Layout Strategies
 #include "UI/Layout/CompactLayoutStrategy.h"
 #include "UI/Layout/FullLayoutStrategy.h"
 
@@ -59,7 +57,6 @@ UIManager::UIManager() : m_is_compact_mode(false) {
     m_now_playing_panel = std::make_unique<NowPlayingPanel>();
     m_history_panel = std::make_unique<HistoryPanel>();
 
-    // Initial layout strategy selection
     int width, height;
     getmaxyx(stdscr, width, height);
     updateLayoutStrategy(width);
@@ -87,7 +84,7 @@ void UIManager::updateLayoutStrategy(int width) {
     }
 }
 
-void UIManager::draw(const std::vector<StationDisplayData>& stations, const AppState& app_state,
+void UIManager::draw(const StationSnapshot& snapshot, const AppState& app_state,
                      int remaining_seconds, int total_duration) {
     clear();
     int height, width;
@@ -102,8 +99,8 @@ void UIManager::draw(const std::vector<StationDisplayData>& stations, const AppS
     );
     
     double display_vol = 0.0;
-    if (!stations.empty()) {
-        const auto& active_station = stations[app_state.active_station_idx];
+    if (!snapshot.stations.empty()) {
+        const auto& active_station = snapshot.stations[snapshot.active_station_idx];
         if (active_station.is_initialized) {
             display_vol = active_station.playback_state == PlaybackState::Muted ? 0.0 : active_station.current_volume;
         }
@@ -112,14 +109,14 @@ void UIManager::draw(const std::vector<StationDisplayData>& stations, const AppS
     m_header_bar->draw(display_vol, app_state);
     m_footer_bar->draw(m_is_compact_mode, app_state);
 
-    if (stations.empty()) {
+    if (snapshot.stations.empty()) {
         refresh();
         return;
     }
     
-    const StationDisplayData& current_station = stations[app_state.active_station_idx];
+    const StationDisplayData& current_station = snapshot.stations[snapshot.active_station_idx];
     
-    m_stations_panel->draw(stations, app_state, app_state.active_panel == ActivePanel::STATIONS && !app_state.copy_mode_active);
+    m_stations_panel->draw(snapshot.stations, app_state, app_state.active_panel == ActivePanel::STATIONS && !app_state.copy_mode_active);
     m_now_playing_panel->draw(current_station, app_state.auto_hop_mode_active, remaining_seconds, total_duration);
     m_history_panel->draw(current_station, app_state, app_state.active_panel == ActivePanel::HISTORY && !app_state.copy_mode_active);
     

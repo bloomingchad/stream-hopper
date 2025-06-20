@@ -1,7 +1,7 @@
 #include "RadioPlayer.h"
 #include "UIManager.h"
 #include "StationManager.h"
-#include "RadioStream.h"
+#include "UI/StationSnapshot.h" // Use new snapshot header
 #include "Utils.h"
 #include <ncurses.h>
 #include <iostream>
@@ -75,9 +75,9 @@ void RadioPlayer::run() {
 
     while (!m_app_state->quit_flag) {
         if (m_app_state->needs_redraw.exchange(false)) {
-            auto station_data_snapshot = m_station_manager->getStationDisplayData();
-            m_ui->draw(station_data_snapshot, *m_app_state,
-                       getRemainingSecondsForCurrentStation(), getStationSwitchDuration(station_data_snapshot.size()));
+            auto snapshot = m_station_manager->createSnapshot();
+            m_ui->draw(snapshot, *m_app_state,
+                       getRemainingSecondsForCurrentStation(), getStationSwitchDuration(snapshot.stations.size()));
         }
 
         int ch = m_ui->getInput();
@@ -103,7 +103,8 @@ void RadioPlayer::updateState() {
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_app_state->auto_hop_start_time);
         
-        auto station_count = m_station_manager->getStationDisplayData().size();
+        // This is safe now because it will just fetch a new snapshot if needed.
+        auto station_count = m_station_manager->createSnapshot().stations.size();
         if (elapsed.count() >= getStationSwitchDuration(station_count)) {
             onDownArrow();
             m_app_state->auto_hop_start_time = std::chrono::steady_clock::now();
@@ -142,7 +143,7 @@ int RadioPlayer::getRemainingSecondsForCurrentStation() const {
     auto now = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_app_state->auto_hop_start_time);
     
-    auto station_count = m_station_manager->getStationDisplayData().size();
+    auto station_count = m_station_manager->createSnapshot().stations.size();
     return std::max(0, getStationSwitchDuration(station_count) - static_cast<int>(elapsed.count()));
 }
 
@@ -152,7 +153,7 @@ void RadioPlayer::onUpArrow() {
     }
 
     if (m_app_state->active_panel == ActivePanel::STATIONS) {
-        auto station_count = m_station_manager->getStationDisplayData().size();
+        auto station_count = m_station_manager->createSnapshot().stations.size();
         if (station_count == 0) return;
 
         int old_idx = m_app_state->active_station_idx;
@@ -174,7 +175,7 @@ void RadioPlayer::onDownArrow() {
     }
 
     if (m_app_state->active_panel == ActivePanel::STATIONS) {
-        auto station_count = m_station_manager->getStationDisplayData().size();
+        auto station_count = m_station_manager->createSnapshot().stations.size();
         if (station_count == 0) return;
 
         int old_idx = m_app_state->active_station_idx;
@@ -186,9 +187,9 @@ void RadioPlayer::onDownArrow() {
         m_station_manager->post(Msg::UpdateActiveWindow{});
         m_app_state->history_scroll_offset = 0;
     } else {
-        auto stations = m_station_manager->getStationDisplayData();
-        if (stations.empty()) return;
-        const auto& name = stations[m_app_state->active_station_idx].name;
+        auto snapshot = m_station_manager->createSnapshot();
+        if (snapshot.stations.empty()) return;
+        const auto& name = snapshot.stations[snapshot.active_station_idx].name;
         size_t size = m_app_state->getStationHistorySize(name);
         if (size > 0 && m_app_state->history_scroll_offset < (int)size - 1) {
             m_app_state->history_scroll_offset++;
@@ -207,9 +208,9 @@ void RadioPlayer::onToggleAutoHopMode() {
         m_app_state->last_switch_time = std::chrono::steady_clock::now();
         m_app_state->auto_hop_start_time = std::chrono::steady_clock::now();
         
-        auto stations = m_station_manager->getStationDisplayData();
-        if(!stations.empty()) {
-            const auto& station = stations[m_app_state->active_station_idx];
+        auto snapshot = m_station_manager->createSnapshot();
+        if(!snapshot.stations.empty()) {
+            const auto& station = snapshot.stations[snapshot.active_station_idx];
             if (station.playback_state != PlaybackState::Playing) onEnter();
             else if (station.current_volume < 50.0) m_station_manager->post(Msg::SwitchStation{m_app_state->active_station_idx, m_app_state->active_station_idx});
         }

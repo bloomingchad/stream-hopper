@@ -14,15 +14,15 @@ class HistoryPanel;
 class HeaderBar;
 class FooterBar;
 class ILayoutStrategy;
-struct StationDisplayData; // Use forward declaration
+struct StationSnapshot; // Use forward declaration
 
 class UIManager {
 public:
     UIManager();
     ~UIManager();
 
-    // The signature now takes a vector of the plain data struct.
-    void draw(const std::vector<StationDisplayData>& stations, const AppState& app_state,
+    // The signature now takes the atomic snapshot struct.
+    void draw(const StationSnapshot& snapshot, const AppState& app_state,
               int remaining_seconds, int total_duration);
 
     int getInput();

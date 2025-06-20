@@ -1,5 +1,5 @@
 #include "UI/HistoryPanel.h"
-#include "UI/StationDisplayData.h"
+#include "UI/StationSnapshot.h"
 #include "AppState.h"
 #include "UI/UIUtils.h"
 #include "nlohmann/json.hpp"

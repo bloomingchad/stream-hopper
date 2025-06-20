@@ -2,7 +2,7 @@
 #include "AppState.h"
 #include "RadioStream.h"
 #include "Utils.h"
-#include "UI/UIUtils.h" // For contains_ci
+#include "UI/UIUtils.h"
 #include <cstring>
 #include <ctime>
 #include <iomanip>
@@ -12,13 +12,11 @@
 #include "nlohmann/json.hpp"
 
 namespace {
-    // Constants for MPV properties
     static constexpr char* PROP_MEDIA_TITLE = (char*)"media-title";
     static constexpr char* PROP_AUDIO_BITRATE = (char*)"audio-bitrate";
     static constexpr char* PROP_EOF_REACHED = (char*)"eof-reached";
     static constexpr char* PROP_CORE_IDLE = (char*)"core-idle";
 
-    // Constants for logic
     constexpr int BITRATE_REDRAW_THRESHOLD = 2;
     constexpr int HISTORY_WRITE_THRESHOLD = 5;
 }
@@ -84,7 +82,11 @@ void MpvEventHandler::onStreamEof(RadioStream& station) {
 void MpvEventHandler::onTitleProperty(mpv_event_property* prop, RadioStream& station) {
     if (prop->format == MPV_FORMAT_STRING) {
         char* title_cstr = *reinterpret_cast<char**>(prop->data);
-        onTitleChanged(station, title_cstr ? title_cstr : "N/A");
+        // ** THE FIX **
+        // Immediately copy the C-string to a std::string to avoid use-after-free,
+        // as the data pointer is only valid for the lifetime of the event.
+        std::string title = title_cstr ? std::string(title_cstr) : "N/A";
+        onTitleChanged(station, title);
     }
 }
 void MpvEventHandler::onBitrateProperty(mpv_event_property* prop, RadioStream& station) {

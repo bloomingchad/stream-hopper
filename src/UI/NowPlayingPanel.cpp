@@ -1,5 +1,5 @@
 #include "UI/NowPlayingPanel.h"
-#include "UI/StationDisplayData.h"
+#include "UI/StationSnapshot.h"
 #include "AppState.h"
 #include "UI/UIUtils.h"
 #include <ncurses.h>

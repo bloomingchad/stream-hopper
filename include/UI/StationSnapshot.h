@@ -1,12 +1,11 @@
-#ifndef STATIONDISPLAYDATA_H
-#define STATIONDISPLAYDATA_H
+#ifndef STATIONSNAPSHOT_H
+#define STATIONSNAPSHOT_H
 
 #include <string>
+#include <vector>
 #include "RadioStream.h" // For PlaybackState enum
 
 // A plain-old-data struct containing only what the UI needs to render a station.
-// This is created by the StationManager and passed BY VALUE to the UI thread
-// to prevent data races.
 struct StationDisplayData {
     std::string name;
     std::string current_title;
@@ -18,4 +17,11 @@ struct StationDisplayData {
     PlaybackState playback_state;
 };
 
-#endif // STATIONDISPLAYDATA_H
+// A struct to hold a guaranteed-consistent snapshot of the data needed for the UI.
+// This is created and returned by the StationManager to avoid race conditions.
+struct StationSnapshot {
+    std::vector<StationDisplayData> stations;
+    int active_station_idx;
+};
+
+#endif // STATIONSNAPSHOT_H
