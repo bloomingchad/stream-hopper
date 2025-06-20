@@ -4,7 +4,7 @@
 #include "RadioStream.h"
 #include "Core/PreloadStrategy.h"
 #include "AppState.h"
-#include "UI/StationDisplayData.h" // New include
+#include "UI/StationDisplayData.h"
 #include <string>
 #include <vector>
 #include <thread>
@@ -13,7 +13,6 @@
 #include <condition_variable>
 #include <mutex>
 #include <deque>
-#include <future>
 #include <variant>
 #include <unordered_set>
 
@@ -47,13 +46,22 @@ public:
     ~StationManager();
 
     void post(StationManagerMessage message);
-    
-    // This is the new, safe way to get data for the UI.
     std::vector<StationDisplayData> getStationDisplayData() const;
 
 private:
+    // A struct to hold the state of an active fade animation
+    struct ActiveFade {
+        int station_id;
+        int generation;
+        double start_vol;
+        double target_vol;
+        std::chrono::steady_clock::time_point start_time;
+        int duration_ms;
+    };
+
     void actorLoop();
-    bool processNextMessage();
+    void processMessages();
+    void handle_activeFades();
     void pollMpvEvents();
     
     void handle_switchStation(int old_idx, int new_idx);
@@ -65,17 +73,15 @@ private:
     void handle_saveHistory();
     void handle_shutdown();
 
-    void fadeAudio(RadioStream& station, double from_vol, double to_vol, int duration_ms);
-    bool isFadeStillValid(const RadioStream& station, int captured_generation, double target_volume) const;
-    void cleanupFinishedFutures();
+    void fadeAudio(int station_id, double to_vol, int duration_ms);
     void initializeStation(int station_idx);
     void shutdownStation(int station_idx);
 
-    // This is now mutable to allow locking in a const-qualified method.
     mutable std::mutex m_stations_mutex;
     std::vector<RadioStream> m_stations;
+    std::vector<ActiveFade> m_active_fades; // New state for fades
 
-    AppState& m_app_state; // Reference to the state owned by RadioPlayer
+    AppState& m_app_state;
     Strategy::Preloader m_preloader;
     std::unique_ptr<MpvEventHandler> m_event_handler;
     std::unordered_set<int> m_active_station_indices;
@@ -84,9 +90,6 @@ private:
     std::deque<StationManagerMessage> m_message_queue;
     std::mutex m_queue_mutex;
     std::condition_variable m_queue_cond;
-
-    std::vector<std::future<void>> m_fade_futures;
-    std::mutex m_fade_futures_mutex;
 };
 
 #endif // STATIONMANAGER_H
