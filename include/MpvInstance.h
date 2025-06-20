@@ -9,15 +9,13 @@ public:
     MpvInstance();
     ~MpvInstance();
 
-    // Delete copy operations to prevent accidental duplication of the handle
     MpvInstance(const MpvInstance&) = delete;
     MpvInstance& operator=(const MpvInstance&) = delete;
-
-    // Allow move operations
     MpvInstance(MpvInstance&& other) noexcept;
     MpvInstance& operator=(MpvInstance&& other) noexcept;
 
     void initialize(const std::string& url);
+    void shutdown(); // New method for explicit shutdown
     mpv_handle* get() const;
 
 private:

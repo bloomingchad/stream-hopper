@@ -10,9 +10,11 @@ void FooterBar::draw(bool is_compact, bool is_copy_mode_active, bool is_auto_hop
     } else if (is_auto_hop_mode_active) {
         footer_text = " [A] Stop Auto-Hop   [C] Copy Mode   [Q] Quit ";
     } else if (is_compact) {
-        footer_text = " [P] Mode [A] Auto [Nav] [Tab] Panel [F] Fav [D] Duck [C] Copy [Q] Quit ";
+        // Adding [+] Cycle to compact mode
+        footer_text = " [P] Mode [A] Auto [Nav] [+] Cycle [Tab] Panel [F] Fav [D] Duck [C] Copy [Q] Quit ";
     } else {
-        footer_text = " [P] Mode [A] Auto-Hop [↑↓] Nav [↵] Mute [D] Duck [⇥] Panel [F] Fav [C] Copy [Q] Quit ";
+        // Adding [+] Cycle to full mode
+        footer_text = " [P] Mode [A] Auto-Hop [↑↓] Nav [↵] Mute [+] Cycle [D] Duck [⇥] Panel [F] Fav [C] Copy [Q] Quit ";
     }
     
     attron(A_REVERSE);

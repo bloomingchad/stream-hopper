@@ -1,37 +1,32 @@
 #include "MpvInstance.h"
 #include "Utils.h"
 #include <stdexcept>
-#include <utility> // For std::swap
+#include <utility>
 
 MpvInstance::MpvInstance() : m_mpv(nullptr) {}
 
 MpvInstance::~MpvInstance() {
+    shutdown(); // Destructor now calls our new shutdown method
+}
+
+void MpvInstance::shutdown() {
     if (m_mpv) {
         // This is the ONLY place the handle should be destroyed.
         mpv_terminate_destroy(m_mpv);
+        m_mpv = nullptr; // Ensure handle is nulled after destruction
     }
 }
 
-// Correct Move Constructor
 MpvInstance::MpvInstance(MpvInstance&& other) noexcept 
-    : m_mpv(other.m_mpv) // Take the other's handle
+    : m_mpv(other.m_mpv)
 {
-    // Leave the other object in a valid, empty state.
     other.m_mpv = nullptr; 
 }
 
-// Correct Move Assignment Operator (using copy-and-swap idiom, simplified)
 MpvInstance& MpvInstance::operator=(MpvInstance&& other) noexcept {
     if (this != &other) {
-        // Destroy our own existing resource first.
-        if (m_mpv) {
-            mpv_terminate_destroy(m_mpv);
-        }
-
-        // Take the other's handle.
+        shutdown(); // Use our new method
         m_mpv = other.m_mpv;
-        
-        // Leave the other object in a valid, empty state.
         other.m_mpv = nullptr;
     }
     return *this;
