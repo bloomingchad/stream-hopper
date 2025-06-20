@@ -1,9 +1,7 @@
 #ifndef ILAYOUTSTRATEGY_H
 #define ILAYOUTSTRATEGY_H
 
-#include <memory>
-
-// Forward declarations
+// Forward declarations reduce header coupling
 class HeaderBar;
 class FooterBar;
 class StationsPanel;

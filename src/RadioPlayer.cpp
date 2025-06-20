@@ -12,7 +12,7 @@ namespace {
     constexpr int DISCOVERY_MODE_REFRESH_MS = 1000;
     constexpr int NORMAL_MODE_REFRESH_MS = 20;
     constexpr int COPY_MODE_TIMEOUT_SECONDS = 10;
-    constexpr int FORGOTTEN_MUTE_SECONDS = 600;
+    constexpr int FORGOTTEN_MUTE_MINUTES = 10;
     constexpr int COPY_MODE_REFRESH_MS = 100;
     constexpr int FOCUS_MODE_SECONDS = 90;
     constexpr size_t MAX_NAV_HISTORY = 10;
@@ -53,17 +53,21 @@ RadioPlayer::~RadioPlayer() {
         m_ui.reset();
     }
     
-    auto end_time = std::chrono::steady_clock::now();
-    auto duration_seconds = std::chrono::duration_cast<std::chrono::seconds>(end_time - m_app_state->session_start_time).count();
-    
-    long duration_minutes = duration_seconds / 60;
-    std::cout << "---\n"
-                << "Thank you for using Stream Hopper!\n"
-                << "🎛️ Session Switches: " << m_app_state->session_switches << "\n"
-                << "✨ New Songs Found: " << m_app_state->new_songs_found << "\n"
-                << "📋 Songs Copied: " << m_app_state->songs_copied << "\n"
-                << "🕐 Total Time: " << duration_minutes << " minutes\n"
-                << "---" << std::endl;
+    if (m_app_state->was_quit_by_mute_timeout) {
+        std::cout << "Hey, you forgot about me for " << FORGOTTEN_MUTE_MINUTES << " minutes! 😤" << std::endl;
+    } else {
+        auto end_time = std::chrono::steady_clock::now();
+        auto duration_seconds = std::chrono::duration_cast<std::chrono::seconds>(end_time - m_app_state->session_start_time).count();
+        
+        long duration_minutes = duration_seconds / 60;
+        std::cout << "---\n"
+                    << "Thank you for using Stream Hopper!\n"
+                    << "🎛️ Session Switches: " << m_app_state->session_switches << "\n"
+                    << "✨ New Songs Found: " << m_app_state->new_songs_found << "\n"
+                    << "📋 Songs Copied: " << m_app_state->songs_copied << "\n"
+                    << "🕐 Total Time: " << duration_minutes << " minutes\n"
+                    << "---" << std::endl;
+    }
 }
 
 void RadioPlayer::run() {
@@ -71,7 +75,6 @@ void RadioPlayer::run() {
 
     while (!m_app_state->quit_flag) {
         if (m_app_state->needs_redraw.exchange(false)) {
-            // Get a thread-safe snapshot of the data for rendering.
             auto station_data_snapshot = m_station_manager->getStationDisplayData();
             m_ui->draw(station_data_snapshot, *m_app_state,
                        getRemainingSecondsForCurrentStation(), getStationSwitchDuration(station_data_snapshot.size()));
@@ -92,7 +95,7 @@ void RadioPlayer::updateState() {
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - m_app_state->copy_mode_start_time);
         if (elapsed.count() >= COPY_MODE_TIMEOUT_SECONDS) {
-            onCopyMode(); // Use the handler to toggle it off
+            onCopyMode();
         }
     }
 
@@ -102,15 +105,10 @@ void RadioPlayer::updateState() {
         
         auto station_count = m_station_manager->getStationDisplayData().size();
         if (elapsed.count() >= getStationSwitchDuration(station_count)) {
-            onDownArrow(); // Simply simulate a down arrow press to advance
+            onDownArrow();
             m_app_state->auto_hop_start_time = std::chrono::steady_clock::now();
         }
     }
-    
-    // The logic for FORGOTTEN_MUTE_SECONDS would be better inside the StationManager actor.
-    // This is because the actor already knows about the mute state and time,
-    // avoiding the need for the RadioPlayer to constantly poll for data.
-    // For now, this is left as-is to avoid a larger refactor.
 
     if (!m_app_state->auto_hop_mode_active && m_app_state->hopper_mode != HopperMode::FOCUS) {
         auto now = std::chrono::steady_clock::now();
@@ -123,7 +121,7 @@ void RadioPlayer::updateState() {
 
 void RadioPlayer::handleInput(int ch) {
     if (m_app_state->copy_mode_active) {
-        onCopyMode(); // Any key exits copy mode
+        onCopyMode();
         return;
     }
 

@@ -2,16 +2,23 @@
 #include "AppState.h"
 #include "RadioStream.h"
 #include "Utils.h"
+#include "UI/UIUtils.h" // For contains_ci
 #include <cstring>
 #include <ctime>
 #include <iomanip>
 #include <sstream>
 #include <cmath>
-#include <algorithm> // For std::find_if, std::search
-#include "nlohmann/json.hpp" // For json usage in onTitleChanged
+#include <algorithm>
+#include "nlohmann/json.hpp"
 
 namespace {
-    // Constants were moved from StationManager
+    // Constants for MPV properties
+    static constexpr char* PROP_MEDIA_TITLE = (char*)"media-title";
+    static constexpr char* PROP_AUDIO_BITRATE = (char*)"audio-bitrate";
+    static constexpr char* PROP_EOF_REACHED = (char*)"eof-reached";
+    static constexpr char* PROP_CORE_IDLE = (char*)"core-idle";
+
+    // Constants for logic
     constexpr int BITRATE_REDRAW_THRESHOLD = 2;
     constexpr int HISTORY_WRITE_THRESHOLD = 5;
 }
@@ -33,10 +40,10 @@ void MpvEventHandler::handlePropertyChange(mpv_event* event) {
     RadioStream* station = findStationById(event->reply_userdata);
     if (!station || !station->isInitialized()) return;
     
-    if (strcmp(prop->name, "media-title") == 0) onTitleProperty(prop, *station);
-    else if (strcmp(prop->name, "audio-bitrate") == 0) onBitrateProperty(prop, *station);
-    else if (strcmp(prop->name, "eof-reached") == 0) onEofProperty(prop, *station);
-    else if (strcmp(prop->name, "core-idle") == 0) onCoreIdleProperty(prop, *station);
+    if (strcmp(prop->name, PROP_MEDIA_TITLE) == 0) onTitleProperty(prop, *station);
+    else if (strcmp(prop->name, PROP_AUDIO_BITRATE) == 0) onBitrateProperty(prop, *station);
+    else if (strcmp(prop->name, PROP_EOF_REACHED) == 0) onEofProperty(prop, *station);
+    else if (strcmp(prop->name, PROP_CORE_IDLE) == 0) onCoreIdleProperty(prop, *station);
 }
 
 void MpvEventHandler::onTitleChanged(RadioStream& station, const std::string& new_title) {
@@ -106,10 +113,4 @@ void MpvEventHandler::onCoreIdleProperty(mpv_event_property* prop, RadioStream& 
 RadioStream* MpvEventHandler::findStationById(int station_id) {
     auto it = std::find_if(m_stations.begin(), m_stations.end(), [station_id](const RadioStream& s) { return s.getID() == station_id; });
     return (it != m_stations.end()) ? &(*it) : nullptr;
-}
-
-bool MpvEventHandler::contains_ci(const std::string& haystack, const std::string& needle) const {
-    if (needle.empty()) return true;
-    auto it = std::search(haystack.begin(), haystack.end(), needle.begin(), needle.end(), [](char ch1, char ch2) { return std::toupper(ch1) == std::toupper(ch2); });
-    return (it != haystack.end());
 }

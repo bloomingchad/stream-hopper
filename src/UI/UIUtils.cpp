@@ -3,6 +3,8 @@
 #include <ctime>
 #include <iomanip>
 #include <sstream>
+#include <algorithm> // For std::search
+#include <cctype>    // For std::toupper
 #include <ncurses.h> // for colors
 
 std::string truncate_string(const std::string& str, size_t width) {
@@ -70,4 +72,14 @@ void draw_box(int y, int x, int w, int h, const std::string& title, bool is_focu
     if (is_focused) {
         attroff(COLOR_PAIR(3));
     }
+}
+
+bool contains_ci(const std::string& haystack, const std::string& needle) {
+    if (needle.empty()) return true;
+    auto it = std::search(haystack.begin(), haystack.end(), needle.begin(), needle.end(), 
+        [](char ch1, char ch2) { 
+            return std::toupper(static_cast<unsigned char>(ch1)) == std::toupper(static_cast<unsigned char>(ch2)); 
+        }
+    );
+    return (it != haystack.end());
 }

@@ -14,8 +14,8 @@
 namespace {
     constexpr int FADE_TIME_MS = 900;
     constexpr double DUCK_VOLUME = 40.0;
-    // The actor loop will wake up this often to check for animations
     constexpr auto ACTOR_LOOP_TIMEOUT = std::chrono::milliseconds(20);
+    constexpr int FORGOTTEN_MUTE_SECONDS = 6;
 }
 
 StationManager::StationManager(const std::vector<std::pair<std::string, std::vector<std::string>>>& station_data, AppState& app_state)
@@ -66,7 +66,7 @@ StationManager::~StationManager() {
     PersistenceManager persistence;
     persistence.saveHistory(m_app_state.getFullHistory());
     persistence.saveFavorites(m_stations);
-    if (!m_stations.empty()) {
+    if (!m_stations.empty() && m_app_state.active_station_idx >= 0 && m_app_state.active_station_idx < (int)m_stations.size()) {
         persistence.saveSession(m_stations[m_app_state.active_station_idx].getName());
     }
 }
@@ -107,21 +107,17 @@ void StationManager::actorLoop() {
     while(running) {
         {
             std::unique_lock<std::mutex> lock(m_queue_mutex);
-            // Wait for a message OR a timeout
             m_queue_cond.wait_for(lock, ACTOR_LOOP_TIMEOUT, [this] { 
                 return !m_message_queue.empty(); 
             });
         }
         
-        // Always lock station data when we're on the actor thread.
         std::lock_guard<std::mutex> lock(m_stations_mutex);
 
-        // Process all pending messages first
         while(!m_message_queue.empty()) {
             auto msg = std::move(m_message_queue.front());
             m_message_queue.pop_front();
 
-            // Check for shutdown message to exit the loop
             if (std::holds_alternative<Msg::Shutdown>(msg)) {
                 handle_shutdown();
                 running = false;
@@ -142,30 +138,41 @@ void StationManager::actorLoop() {
 
         if (!running) break;
 
-        // After messages, process continuous tasks
         handle_activeFades();
         pollMpvEvents();
+
+        if (!m_app_state.auto_hop_mode_active) {
+            int active_idx = m_app_state.active_station_idx;
+            if (active_idx >= 0 && active_idx < (int)m_stations.size()) {
+                const auto& active_station = m_stations[active_idx];
+                if (active_station.getPlaybackState() == PlaybackState::Muted) {
+                    if (auto mute_start = active_station.getMuteStartTime()) {
+                        auto now = std::chrono::steady_clock::now();
+                        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - *mute_start);
+                        if (elapsed.count() >= FORGOTTEN_MUTE_SECONDS) {
+                            m_app_state.was_quit_by_mute_timeout = true; // Set new flag
+                            m_app_state.quit_flag = true;
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
-// New method to process fade animations
 void StationManager::handle_activeFades() {
     if (m_active_fades.empty()) return;
-
     auto now = std::chrono::steady_clock::now();
     bool needs_redraw = false;
 
-    // Iterate backwards to allow safe removal
     for (int i = m_active_fades.size() - 1; i >= 0; --i) {
         auto& fade = m_active_fades[i];
-        
         RadioStream* station = nullptr;
         if(fade.station_id >=0 && fade.station_id < (int)m_stations.size()){
             station = &m_stations[fade.station_id];
         }
 
         if (!station || !station->isInitialized() || station->getGeneration() != fade.generation) {
-            // Station is gone or has been recycled, remove the fade
             m_active_fades.erase(m_active_fades.begin() + i);
             continue;
         }
@@ -184,16 +191,12 @@ void StationManager::handle_activeFades() {
         needs_redraw = true;
 
         if (progress >= 1.0) {
-            // Fade is complete
             station->setCurrentVolume(fade.target_vol);
             station->setFading(false);
             m_active_fades.erase(m_active_fades.begin() + i);
         }
     }
-
-    if (needs_redraw) {
-        m_app_state.needs_redraw = true;
-    }
+    if (needs_redraw) m_app_state.needs_redraw = true;
 }
 
 void StationManager::handle_saveHistory() {
@@ -216,7 +219,6 @@ void StationManager::pollMpvEvents() {
     bool events_pending = true;
     while(events_pending) {
         events_pending = false;
-        // Make a copy of indices to avoid issues if m_active_station_indices is modified
         const auto indices_to_poll = m_active_station_indices;
         for(int station_idx : indices_to_poll) { 
             if (station_idx >= (int)m_stations.size() || !m_stations[station_idx].isInitialized()) {
@@ -332,13 +334,11 @@ void StationManager::shutdownStation(int station_idx) {
     m_active_station_indices.erase(station_idx);
 }
 
-// New fadeAudio simply creates an ActiveFade request for the actor loop
 void StationManager::fadeAudio(int station_id, double to_vol, int duration_ms) {
     if (station_id < 0 || station_id >= (int)m_stations.size()) return;
     RadioStream& station = m_stations[station_id];
     if (!station.isInitialized()) return;
 
-    // Remove any existing fade for this station to avoid conflicts
     m_active_fades.erase(
         std::remove_if(m_active_fades.begin(), m_active_fades.end(),
                        [station_id](const ActiveFade& f) { return f.station_id == station_id; }),

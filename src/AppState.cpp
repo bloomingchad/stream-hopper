@@ -7,6 +7,7 @@ using nlohmann::json;
 AppState::AppState()
     : active_station_idx(0), quit_flag(false), needs_redraw(true),
       auto_hop_mode_active(false), copy_mode_active(false),
+      was_quit_by_mute_timeout(false), // Initialize flag
       active_panel(ActivePanel::STATIONS), history_scroll_offset(0),
       hopper_mode(HopperMode::BALANCED),
       last_switch_time(std::chrono::steady_clock::now()),

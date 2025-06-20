@@ -36,6 +36,7 @@ public:
   std::atomic<bool> needs_redraw;
   std::atomic<bool> auto_hop_mode_active;
   std::atomic<bool> copy_mode_active;
+  std::atomic<bool> was_quit_by_mute_timeout; // New flag!
   
   ActivePanel active_panel;
   int history_scroll_offset;
