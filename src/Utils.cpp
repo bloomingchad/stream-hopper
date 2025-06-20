@@ -1,14 +1,12 @@
-// src/Utils.cpp
 #include "Utils.h"
 #include <iostream>
+#include <stdexcept> // Required for std::runtime_error
 
 void check_mpv_error(int status, const std::string& context) {
     if (status < 0) {
-        // Ensure ncurses is properly shut down before printing to stderr
-        if (stdscr != NULL && !isendwin()) {
-            endwin();
-        }
-        std::cerr << "MPV Error (" << context << "): " << mpv_error_string(status) << std::endl;
-        exit(1); // Terminate the program on critical MPV error
+        std::string error_msg = "MPV Error (" + context + "): " + mpv_error_string(status);
+        // Instead of exiting, throw a standard C++ exception.
+        // This allows the call stack to unwind and destructors to be called.
+        throw std::runtime_error(error_msg);
     }
 }

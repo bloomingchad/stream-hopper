@@ -28,15 +28,22 @@ int main() {
         RadioPlayer player(stream_hopper::station_data);
         player.run();
     } catch (const std::exception& e) {
+        // This block will now catch errors from check_mpv_error
         if (stdscr != NULL && !isendwin()) {
             endwin();
         }
         // Since stderr is suppressed, we'll log to a file for critical errors
         FILE* logfile = fopen("stream_hopper_crash.log", "a");
         if (logfile) {
-            fprintf(logfile, "Critical Error: %s\n", e.what());
+            time_t now = time(0);
+            char dt[30];
+            strftime(dt, sizeof(dt), "%Y-%m-%d %H:%M:%S", localtime(&now));
+            fprintf(logfile, "[%s] Critical Error: %s\n", dt, e.what());
             fclose(logfile);
         }
+        // Also print to stdout for immediate user feedback
+        std::cout << "A critical error occurred: " << e.what() << std::endl;
+        std::cout << "Details have been logged to stream_hopper_crash.log" << std::endl;
         return 1;
     }
 
