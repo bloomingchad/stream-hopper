@@ -1,6 +1,6 @@
 #include "UIManager.h"
-#include "RadioStream.h"
 #include "AppState.h"
+#include "UI/StationDisplayData.h"
 
 // UI Components
 #include "UI/HeaderBar.h"
@@ -75,7 +75,6 @@ void UIManager::setInputTimeout(int milliseconds) {
     timeout(milliseconds);
 }
 
-// NEW: Selects the appropriate layout strategy based on terminal width.
 void UIManager::updateLayoutStrategy(int width) {
     bool should_be_compact = (width < COMPACT_MODE_WIDTH);
     if (!m_layout_strategy || m_is_compact_mode != should_be_compact) {
@@ -88,29 +87,25 @@ void UIManager::updateLayoutStrategy(int width) {
     }
 }
 
-// REFACTORED: The main draw function is now much simpler.
-void UIManager::draw(const std::vector<RadioStream>& stations, const AppState& app_state,
+void UIManager::draw(const std::vector<StationDisplayData>& stations, const AppState& app_state,
                      int remaining_seconds, int total_duration) {
     clear();
     int height, width;
     getmaxyx(stdscr, height, width);
 
-    // Ensure the correct layout strategy is active
     updateLayoutStrategy(width);
 
-    // Delegate dimension calculation to the current strategy
     m_layout_strategy->calculateDimensions(width, height,
         *m_header_bar, *m_footer_bar,
         *m_stations_panel, *m_now_playing_panel, *m_history_panel,
         app_state
     );
     
-    // --- Delegate Drawing to components ---
     double display_vol = 0.0;
     if (!stations.empty()) {
         const auto& active_station = stations[app_state.active_station_idx];
-        if (active_station.isInitialized()) {
-            display_vol = active_station.getPlaybackState() == PlaybackState::Muted ? 0.0 : active_station.getCurrentVolume();
+        if (active_station.is_initialized) {
+            display_vol = active_station.playback_state == PlaybackState::Muted ? 0.0 : active_station.current_volume;
         }
     }
     
@@ -122,7 +117,7 @@ void UIManager::draw(const std::vector<RadioStream>& stations, const AppState& a
         return;
     }
     
-    const RadioStream& current_station = stations[app_state.active_station_idx];
+    const StationDisplayData& current_station = stations[app_state.active_station_idx];
     
     m_stations_panel->draw(stations, app_state, app_state.active_panel == ActivePanel::STATIONS && !app_state.copy_mode_active);
     m_now_playing_panel->draw(current_station, app_state.auto_hop_mode_active, remaining_seconds, total_duration);

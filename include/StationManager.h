@@ -4,6 +4,7 @@
 #include "RadioStream.h"
 #include "Core/PreloadStrategy.h"
 #include "AppState.h"
+#include "UI/StationDisplayData.h" // New include
 #include <string>
 #include <vector>
 #include <thread>
@@ -46,7 +47,9 @@ public:
     ~StationManager();
 
     void post(StationManagerMessage message);
-    const std::vector<RadioStream>& getStations() const;
+    
+    // This is the new, safe way to get data for the UI.
+    std::vector<StationDisplayData> getStationDisplayData() const;
 
 private:
     void actorLoop();
@@ -68,7 +71,10 @@ private:
     void initializeStation(int station_idx);
     void shutdownStation(int station_idx);
 
+    // This is now mutable to allow locking in a const-qualified method.
+    mutable std::mutex m_stations_mutex;
     std::vector<RadioStream> m_stations;
+
     AppState& m_app_state; // Reference to the state owned by RadioPlayer
     Strategy::Preloader m_preloader;
     std::unique_ptr<MpvEventHandler> m_event_handler;

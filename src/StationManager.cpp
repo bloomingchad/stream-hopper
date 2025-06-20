@@ -78,9 +78,28 @@ StationManager::~StationManager() {
     }
 }
 
-const std::vector<RadioStream>& StationManager::getStations() const {
-    return m_stations;
+// New implementation. Locks the internal vector, copies the necessary data
+// into plain structs, and returns the copy.
+std::vector<StationDisplayData> StationManager::getStationDisplayData() const {
+    std::lock_guard<std::mutex> lock(m_stations_mutex);
+    std::vector<StationDisplayData> display_data;
+    display_data.reserve(m_stations.size());
+
+    for (const auto& station : m_stations) {
+        display_data.push_back({
+            .name = station.getName(),
+            .current_title = station.getCurrentTitle(),
+            .bitrate = station.getBitrate(),
+            .current_volume = station.getCurrentVolume(),
+            .is_initialized = station.isInitialized(),
+            .is_favorite = station.isFavorite(),
+            .is_buffering = station.isBuffering(),
+            .playback_state = station.getPlaybackState()
+        });
+    }
+    return display_data;
 }
+
 
 void StationManager::post(StationManagerMessage message) {
     {
@@ -105,6 +124,11 @@ bool StationManager::processNextMessage() {
     }
 
     bool should_continue = true;
+    
+    // Lock the station vector for the duration of any message processing
+    // to ensure thread safety with getStationDisplayData.
+    std::lock_guard<std::mutex> lock(m_stations_mutex);
+
     std::visit([&](auto&& arg) {
         using T = std::decay_t<decltype(arg)>;
         if      constexpr (std::is_same_v<T, Msg::SwitchStation>)      { handle_switchStation(arg.old_idx, arg.new_idx); }

@@ -1,36 +1,35 @@
 #include "UI/NowPlayingPanel.h"
-#include "RadioStream.h"
+#include "UI/StationDisplayData.h"
 #include "AppState.h"
 #include "UI/UIUtils.h"
 #include <ncurses.h>
 
-void NowPlayingPanel::draw(const RadioStream& station, bool is_auto_hop_mode,
+void NowPlayingPanel::draw(const StationDisplayData& station, bool is_auto_hop_mode,
                            int remaining_seconds, int total_duration) {
     std::string box_title = is_auto_hop_mode ? "🤖 AUTO-HOP MODE" : "▶️  NOW PLAYING";
     draw_box(m_y, m_x, m_w, m_h, box_title, false);
 
     int inner_w = m_w - 4;
     
-    std::string title = station.isInitialized() ? (station.isBuffering() ? "Buffering..." : station.getCurrentTitle()) : "...";
+    std::string title = station.is_initialized ? (station.is_buffering ? "Buffering..." : station.current_title) : "...";
     attron(A_BOLD);
     mvwprintw(stdscr, m_y + 2, m_x + 3, "%s", truncate_string(title, inner_w - 2).c_str());
     attroff(A_BOLD);
     
-    // Draw station name and bitrate on the same line
-    int bitrate = station.isInitialized() ? station.getBitrate() : 0;
+    int bitrate = station.is_initialized ? station.bitrate : 0;
     std::string bitrate_str;
     if (bitrate > 0) {
         bitrate_str = " " + std::to_string(bitrate) + "k ";
     }
 
     size_t max_name_width = inner_w - bitrate_str.length() - 2;
-    mvwprintw(stdscr, m_y + 3, m_x + 3, "%s", truncate_string(station.getName(), max_name_width).c_str());
+    mvwprintw(stdscr, m_y + 3, m_x + 3, "%s", truncate_string(station.name, max_name_width).c_str());
 
     if (!bitrate_str.empty()) {
         int color_pair_num = 0;
-        if (bitrate > 200)      { color_pair_num = 5; } // Blue BG
-        else if (bitrate >= 96) { color_pair_num = 6; } // Green BG
-        else                    { color_pair_num = 7; } // Yellow BG
+        if (bitrate > 200)      { color_pair_num = 5; }
+        else if (bitrate >= 96) { color_pair_num = 6; }
+        else                    { color_pair_num = 7; }
         
         attron(COLOR_PAIR(color_pair_num));
         mvwprintw(stdscr, m_y + 3, m_x + m_w - bitrate_str.length() - 3, "%s", bitrate_str.c_str());
@@ -65,11 +64,11 @@ void NowPlayingPanel::drawAutoHopView(int inner_w, int remaining_seconds, int to
     }
 }
 
-void NowPlayingPanel::drawNormalView(const RadioStream& station, int inner_w) {
+void NowPlayingPanel::drawNormalView(const StationDisplayData& station, int inner_w) {
     int bar_width = inner_w - 12; 
     if (bar_width > 0) {
-        bool is_muted = !station.isInitialized() || station.getPlaybackState() == PlaybackState::Muted;
-        double vol_percent = (is_muted ? 0.0 : station.getCurrentVolume()) / 100.0;
+        bool is_muted = !station.is_initialized || station.playback_state == PlaybackState::Muted;
+        double vol_percent = (is_muted ? 0.0 : station.current_volume) / 100.0;
         int filled_width = static_cast<int>(vol_percent * bar_width);
         
         mvwprintw(stdscr, m_y + 1, m_x + 3, "🔊 [");
@@ -78,6 +77,6 @@ void NowPlayingPanel::drawNormalView(const RadioStream& station, int inner_w) {
         attroff(COLOR_PAIR(2));
         for(int i = filled_width; i < bar_width; ++i) mvwaddch(stdscr, m_y + 1, m_x + 6 + i, ACS_CKBOARD);
         mvwprintw(stdscr, m_y + 1, m_x + 6 + bar_width, "]");
-        mvwprintw(stdscr, m_y + 1, m_x + 8 + bar_width, "%.0f%%", is_muted ? 0.0 : station.getCurrentVolume());
+        mvwprintw(stdscr, m_y + 1, m_x + 8 + bar_width, "%.0f%%", is_muted ? 0.0 : station.current_volume);
     }
 }

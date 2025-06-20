@@ -2,8 +2,6 @@
 #define RADIOSTREAM_H
 
 #include <string>
-#include <atomic>
-#include <mutex>
 #include <chrono>
 #include <optional>
 #include "MpvInstance.h"
@@ -26,7 +24,7 @@ public:
     void shutdown();
 
     bool isInitialized() const;
-    int getGeneration() const; // <-- NEW
+    int getGeneration() const;
 
     int getID() const;
     const std::string& getName() const;
@@ -73,24 +71,21 @@ private:
     std::string m_url;
     MpvInstance m_mpv_instance;
     
-    std::atomic<bool> m_is_initialized;
-    std::atomic<int> m_generation; // <-- NEW: The "kill switch" counter
+    bool m_is_initialized;
+    int m_generation; // The "kill switch" counter
 
-    mutable std::mutex m_title_mutex;
     std::string m_current_title;
-
-    std::atomic<int> m_bitrate;
-    std::atomic<PlaybackState> m_playback_state;
-    std::atomic<double> m_current_volume;
-    std::atomic<double> m_pre_mute_volume;
-    std::atomic<bool> m_is_fading;
-    std::atomic<double> m_target_volume;
-    std::atomic<bool> m_is_favorite;
-    std::atomic<bool> m_has_logged_first_song;
-    std::atomic<bool> m_is_buffering;
+    int m_bitrate;
+    PlaybackState m_playback_state;
+    double m_current_volume;
+    double m_pre_mute_volume;
+    bool m_is_fading;
+    double m_target_volume;
+    bool m_is_favorite;
+    bool m_has_logged_first_song;
+    bool m_is_buffering;
     
     std::optional<std::chrono::steady_clock::time_point> m_mute_start_time;
-    mutable std::mutex m_mute_time_mutex;
 };
 
 #endif // RADIOSTREAM_H

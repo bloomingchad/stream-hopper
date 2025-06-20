@@ -6,17 +6,17 @@
 #include <string>
 
 // Forward declarations
-class RadioStream;
 class AppState;
+struct StationDisplayData;
 
 class StationsPanel : public Panel {
 public:
     StationsPanel();
-    void draw(const std::vector<RadioStream>& stations, const AppState& app_state, bool is_focused);
+    void draw(const std::vector<StationDisplayData>& stations, const AppState& app_state, bool is_focused);
 
 private:
-    std::string getStationStatusString(const RadioStream& station) const;
-    void drawStationLine(int y, const RadioStream& station, bool is_selected, int inner_w);
+    std::string getStationStatusString(const StationDisplayData& station) const;
+    void drawStationLine(int y, const StationDisplayData& station, bool is_selected, int inner_w);
 
     int m_station_scroll_offset;
 };

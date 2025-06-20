@@ -7,7 +7,6 @@
 #include <memory>
 
 // Forward declarations
-class RadioStream;
 class AppState;
 class StationsPanel;
 class NowPlayingPanel;
@@ -15,13 +14,15 @@ class HistoryPanel;
 class HeaderBar;
 class FooterBar;
 class ILayoutStrategy;
+struct StationDisplayData; // Use forward declaration
 
 class UIManager {
 public:
     UIManager();
     ~UIManager();
 
-    void draw(const std::vector<RadioStream>& stations, const AppState& app_state,
+    // The signature now takes a vector of the plain data struct.
+    void draw(const std::vector<StationDisplayData>& stations, const AppState& app_state,
               int remaining_seconds, int total_duration);
 
     int getInput();

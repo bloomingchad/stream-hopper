@@ -22,7 +22,7 @@ private:
     void handleInput(int ch);
     void updateState();
     int getRemainingSecondsForCurrentStation();
-    int getStationSwitchDuration();
+    int getStationSwitchDuration(size_t station_count);
 
     void onUpArrow();
     void onDownArrow();
@@ -37,7 +37,7 @@ private:
 
     std::map<int, std::function<void()>> m_input_handlers;
     std::unique_ptr<UIManager> m_ui;
-    std::unique_ptr<AppState> m_app_state; // It's back!
+    std::unique_ptr<AppState> m_app_state;
     std::unique_ptr<StationManager> m_station_manager;
 };
 

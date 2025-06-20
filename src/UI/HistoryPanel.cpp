@@ -1,5 +1,5 @@
 #include "UI/HistoryPanel.h"
-#include "RadioStream.h"
+#include "UI/StationDisplayData.h"
 #include "AppState.h"
 #include "UI/UIUtils.h"
 #include "nlohmann/json.hpp"
@@ -7,11 +7,11 @@
 #include <iomanip>
 #include <sstream>
 
-void HistoryPanel::draw(const RadioStream& station, const AppState& app_state, bool is_focused) {
+void HistoryPanel::draw(const StationDisplayData& station, const AppState& app_state, bool is_focused) {
     if (m_h <= 0) return;
     draw_box(m_y, m_x, m_w, m_h, "📝 RECENT HISTORY", is_focused);
 
-    const auto station_history = app_state.getStationHistory(station.getName());
+    const auto station_history = app_state.getStationHistory(station.name);
     const int scroll_offset = app_state.history_scroll_offset;
 
     if (!station_history.empty()) {

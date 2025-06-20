@@ -4,12 +4,12 @@
 #include "UI/Panel.h"
 
 // Forward declarations
-class RadioStream;
+struct StationDisplayData;
 class AppState;
 
 class HistoryPanel : public Panel {
 public:
-    void draw(const RadioStream& station, const AppState& app_state, bool is_focused);
+    void draw(const StationDisplayData& station, const AppState& app_state, bool is_focused);
 };
 
 #endif // HISTORYPANEL_H

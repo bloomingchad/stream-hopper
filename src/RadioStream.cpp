@@ -7,7 +7,7 @@
 RadioStream::RadioStream(int id, std::string name, std::string url)
     : m_id(id), m_name(std::move(name)), m_url(std::move(url)), m_mpv_instance(),
       m_is_initialized(false),
-      m_generation(0), // <-- NEW
+      m_generation(0),
       m_current_title("..."), m_bitrate(0),
       m_playback_state(PlaybackState::Playing),
       m_current_volume(0.0), 
@@ -20,47 +20,41 @@ RadioStream::RadioStream(RadioStream&& other) noexcept
       m_name(std::move(other.m_name)),
       m_url(std::move(other.m_url)),
       m_mpv_instance(std::move(other.m_mpv_instance)),
-      m_is_initialized(other.m_is_initialized.load()),
-      m_generation(other.m_generation.load()), // <-- NEW
-      m_bitrate(other.m_bitrate.load()),
-      m_playback_state(other.m_playback_state.load()),
-      m_current_volume(other.m_current_volume.load()),
-      m_pre_mute_volume(other.m_pre_mute_volume.load()),
-      m_is_fading(other.m_is_fading.load()),
-      m_target_volume(other.m_target_volume.load()),
-      m_is_favorite(other.m_is_favorite.load()),
-      m_has_logged_first_song(other.m_has_logged_first_song.load()),
-      m_is_buffering(other.m_is_buffering.load())
-{
-    std::lock_guard<std::mutex> other_title_lock(other.m_title_mutex);
-    m_current_title = std::move(other.m_current_title);
-    
-    std::lock_guard<std::mutex> other_mute_time_lock(other.m_mute_time_mutex);
-    m_mute_start_time = std::move(other.m_mute_start_time);
-}
+      m_is_initialized(other.m_is_initialized),
+      m_generation(other.m_generation),
+      m_current_title(std::move(other.m_current_title)),
+      m_bitrate(other.m_bitrate),
+      m_playback_state(other.m_playback_state),
+      m_current_volume(other.m_current_volume),
+      m_pre_mute_volume(other.m_pre_mute_volume),
+      m_is_fading(other.m_is_fading),
+      m_target_volume(other.m_target_volume),
+      m_is_favorite(other.m_is_favorite),
+      m_has_logged_first_song(other.m_has_logged_first_song),
+      m_is_buffering(other.m_is_buffering),
+      m_mute_start_time(std::move(other.m_mute_start_time))
+{}
 
 RadioStream& RadioStream::operator=(RadioStream&& other) noexcept
 {
     if (this != &other) {
-        std::scoped_lock lock(m_title_mutex, other.m_title_mutex, m_mute_time_mutex, other.m_mute_time_mutex);
-
         m_id = other.m_id;
         m_name = std::move(other.m_name);
         m_url = std::move(other.m_url);
         m_mpv_instance = std::move(other.m_mpv_instance);
         
-        m_is_initialized.store(other.m_is_initialized.load());
-        m_generation.store(other.m_generation.load()); // <-- NEW
+        m_is_initialized = other.m_is_initialized;
+        m_generation = other.m_generation;
         m_current_title = std::move(other.m_current_title);
-        m_bitrate.store(other.m_bitrate.load());
-        m_playback_state.store(other.m_playback_state.load());
-        m_current_volume.store(other.m_current_volume.load());
-        m_pre_mute_volume.store(other.m_pre_mute_volume.load());
-        m_is_fading.store(other.m_is_fading.load());
-        m_target_volume.store(other.m_target_volume.load());
-        m_is_favorite.store(other.m_is_favorite.load());
-        m_has_logged_first_song.store(other.m_has_logged_first_song.load());
-        m_is_buffering.store(other.m_is_buffering.load());
+        m_bitrate = other.m_bitrate;
+        m_playback_state = other.m_playback_state;
+        m_current_volume = other.m_current_volume;
+        m_pre_mute_volume = other.m_pre_mute_volume;
+        m_is_fading = other.m_is_fading;
+        m_target_volume = other.m_target_volume;
+        m_is_favorite = other.m_is_favorite;
+        m_has_logged_first_song = other.m_has_logged_first_song;
+        m_is_buffering = other.m_is_buffering;
         m_mute_start_time = std::move(other.m_mute_start_time);
     }
     return *this;
@@ -69,7 +63,6 @@ RadioStream& RadioStream::operator=(RadioStream&& other) noexcept
 void RadioStream::shutdown() {
     if (!m_is_initialized) return;
 
-    // --- The Fix Part 1 ---
     // Increment the generation. This immediately invalidates all
     // existing fade threads for this station.
     m_generation++; 
@@ -124,23 +117,18 @@ void RadioStream::initialize(double initial_volume) {
 }
 
 bool RadioStream::isInitialized() const { return m_is_initialized; }
-int RadioStream::getGeneration() const { return m_generation.load(); } // <-- NEW
+int RadioStream::getGeneration() const { return m_generation; }
 
 int RadioStream::getID() const { return m_id; }
-// ... rest of getters/setters are the same ...
-// I will include them to be safe.
-
 const std::string &RadioStream::getName() const { return m_name; }
 const std::string &RadioStream::getURL() const { return m_url; }
 mpv_handle *RadioStream::getMpvHandle() const { return m_mpv_instance.get(); }
 
 std::string RadioStream::getCurrentTitle() const {
-  std::lock_guard<std::mutex> lock(m_title_mutex);
   return m_current_title;
 }
 
 void RadioStream::setCurrentTitle(const std::string &title) {
-  std::lock_guard<std::mutex> lock(m_title_mutex);
   m_current_title = title;
 }
 
@@ -168,16 +156,13 @@ bool RadioStream::isBuffering() const { return m_is_buffering; }
 void RadioStream::setBuffering(bool buffering) { m_is_buffering = buffering; }
 
 std::optional<std::chrono::steady_clock::time_point> RadioStream::getMuteStartTime() const {
-    std::lock_guard<std::mutex> lock(m_mute_time_mutex);
     return m_mute_start_time;
 }
 
 void RadioStream::setMuteStartTime() {
-    std::lock_guard<std::mutex> lock(m_mute_time_mutex);
     m_mute_start_time = std::chrono::steady_clock::now();
 }
 
 void RadioStream::resetMuteStartTime() {
-    std::lock_guard<std::mutex> lock(m_mute_time_mutex);
     m_mute_start_time = std::nullopt;
 }
