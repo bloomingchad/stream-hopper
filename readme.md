@@ -1,131 +1,111 @@
-# 🎵 stream hopper
+# 🐇 stream hopper
 
-a terminal-based radio station switcher for discovering new music through live streams. hop between stations, automatically log song titles, and use those discoveries to build better playlists elsewhere.
+<div align="center">
+<img src="app.png" alt="stream hopper ui" style="border-radius: 12px; width: 100%; max-width: 800px; margin-bottom: 20px;" />
+</div>
 
-**the idea:** human-curated radio beats algorithmic recommendations. find tracks you'd never discover otherwise.
+a terminal-based radio player for discovering new music through human-curated live streams. hop between stations, automatically log every song, and break the algorithm's hold on your musical taste.
 
-## ✨ key features
+## 🧩 features
 
-- **⚡ instant station switching** - seamlessly hop between radio stations with smooth audio fading
-- **🎤 live "now playing" display** - see exactly what's playing on each station in real-time  
-- **🔇 smart mute controls** - mute/unmute stations without losing your place
-- **🤖 auto-hop mode** - auto-discovery mode that cycles through all stations automatically
-- **📝 json history logging** - automatically captures and saves song titles for later reference
-- **🎛️ multi-stream management** - monitor multiple stations simultaneously with individual volume control
-- **🎨 clean terminal ui** - distraction-free interface built with ncurses
+-   **⚡ instant station switching:** seamlessly hop between stations with smooth audio crossfades.
+-   **✍️ external config:** manage your stations in a simple, comment-friendly `stations.jsonc` file.
+-   **📝 automatic history:** every new song is logged to `radio_history.json` with a timestamp.
+-   **⚙️ performance modes:** switch between `🍃 Balanced`, `🚀 Performance`, and `🎧 Focus` modes to manage resources.
+-   **🤖 auto-hop discovery:** let the app cycle through stations for you for passive discovery.
+-   **⭐ persistent favorites:** mark your favorite stations and they'll be saved for next time.
+-   **🔗 multi-url fallbacks:** define multiple stream URLs per station and cycle them with `+`.
+-   **🎨 responsive tui:** a polished `ncurses` interface that adapts to your terminal size.
 
-## 🛠️ dependencies
+## ⬇️ installation
 
-you'll need a c++ compiler and the following development libraries:
+you'll need a C++17 compiler, `make`, `pkg-config`, and the development libraries for `libmpv` and `ncurses`.
 
-### required tools
-- `g++` (c++17 or later)
-- `make`
-- `pkg-config`
+| distribution      | installation command                                                   |
+| ----------------- | ---------------------------------------------------------------------- |
+| **Debian/Ubuntu** | `sudo apt install build-essential libmpv-dev libncursesw5-dev pkg-config` |
+| **Fedora/RHEL**   | `sudo dnf install gcc-c++ mpv-devel ncurses-devel pkg-config make`     |
+| **Arch Linux**    | `sudo pacman -s gcc make pkg-config mpv ncurses`                         |
 
-### required libraries
-- `libmpv-dev` - media playback engine
-- `ncurses-dev` - terminal ui framework
+## 🛠️ build & run
 
-### installation commands
+1.  **compile the project**
+    ```bash
+    make
+    ```
+2.  **run the application**
+    ```bash
+    ./build/stream-hopper
+    ```
 
-**debian/ubuntu:**
-```bash
-sudo apt update
-sudo apt install build-essential libmpv-dev libncurses5-dev pkg-config
+## controls
+
+| key     | action                                                        |
+| :------ | :------------------------------------------------------------ |
+| `↑` / `↓` | navigate stations / scroll history                          |
+| `↵`     | mute / unmute the current station                           |
+| `a`     | toggle auto-hop mode                                          |
+| `p`     | cycle performance profiles (Balanced, Performance, Focus)     |
+| `f`     | toggle favorite for the current station                       |
+| `d`     | toggle audio ducking (temporarily lower volume)             |
+| `+`     | cycle to the next available stream URL for the station        |
+| `⇥`     | switch focus between Stations and History panels              |
+| `c`     | enter Copy Mode (pauses UI for safe text selection)           |
+| `q`     | quit                                                          |
+
+## ⚙️ configuration
+
+your personal setup lives in simple JSON files next to the executable:
+
+-   `stations.jsonc`: **your station list.** this is the main file you'll edit.
+-   `radio_history.json`: your complete, timestamped listening history.
+-   `radio_favorites.json`: a list of your favorited station names.
+-   `radio_session.json`: remembers the last station you were on.
+
+### ✏️ editing your station list
+
+modify `stations.jsonc` to build your personal radio universe.
+
+```jsonc
+// stations.jsonc
+[
+    {
+        "name": "Sunshine Live - EDM",
+        "urls": [
+            "http://stream.sunshine-live.de/edm/mp3-192/stream.sunshine-live.de/",
+            "http://stream.sunshine-live.de/edm/mp3-128/stream.sunshine-live.de/"
+        ]
+    },
+    {
+        "name": "Energy - Dance",
+        "urls": ["https://edge01.streamonkey.net/energy-dance/stream/mp3"]
+    }
+]
 ```
-
-**fedora/rhel/centos:**
-```bash
-sudo dnf install gcc-c++ mpv-devel ncurses-devel pkg-config make
-```
-
-**arch linux:**
-```bash
-sudo pacman -s gcc make pkg-config mpv ncurses
-```
-
-## 🚀 build & run
-
-1. **make:**
-   ```bash
-   make
-   ```
-
-## 🎮 controls
-
-| key | action |
-|-----|--------|
-| `↑` / `↓` | switch between radio stations |
-| `enter` | mute/unmute current station |
-| `a` | toggle auto-hop mode (auto-discovery) |
-| `p` | cycle through performance modes |
-| `d` | toggle audio ducking |
-| `f` | toggle favorite for current station |
-| `tab` | switch focus between panels |
-| `c` | enter copy mode (pauses UI) |
-| `q` | quit application |
-
-### auto-hop mode
-press `a` to enter auto-hop mode - the app will automatically cycle through all stations, spending equal time on each one. perfect for passive discovery when you want to sit back and let the music surprise you.
-
-## 📁 configuration
-
-- **station list:** modify the `station_data` vector in `include/StationList.hpp` to add/remove stations
-- **song history:** automatically saved to `radio_history.json` in the current directory
-- **fade duration:** adjust `FADE_TIME_MS` in `StationManager.cpp` (default: 900ms) for faster/slower transitions
-- **auto-hop duration:** modify `AUTO_HOP_TOTAL_TIME_SECONDS` in `RadioPlayer.cpp` (default: ~18 minutes total cycle)
-
-### adding your own stations
-
-edit the `station_data` vector in `include/StationList.hpp`:
-```cpp
-{"station name", {"https://stream-url-here"}},
-```
-
-the app comes pre-configured with a curated selection of european dance, electronic, and german rap stations.
-
-## 📊 history logging
-
-every song title change is automatically logged with timestamps to `radio_history.json`:
-
-```json
-{
-  "station name": [
-    ["2024-06-12 14:30:15", "artist - song title"],
-    ["2024-06-12 14:33:42", "another artist - another song"]
-  ]
-}
-```
-
-use this data to build better playlists on spotify, apple music, or your platform of choice!
-
-## 🎯 workflow integration
-
-1. **discover:** run stream hopper and hop between stations until you hear something amazing
-2. **capture:** the song title is automatically logged to your history file  
-3. **amplify:** search for those tracks on your streaming service to seed new, diverse playlists
-4. **repeat:** break the algorithm's hold on your musical taste, one discovery at a time
 
 ## 🔧 technical details
 
-- **architecture:** multi-threaded design with separate audio handling and ui threads
-- **audio engine:** powered by libmpv for reliable stream playback
-- **memory safe:** modern c++ with raii and smart pointers
-- **cross-platform:** works on any linux distribution with the required dependencies
-
-## 📝 license
-
-this project is licensed under the mozilla public license 2.0 (mpl-2.0).
+-   **architecture:** thread-safe Actor Model with a unidirectional data flow.
+-   **audio engine:** `libmpv`
+-   **ui framework:** `ncurses` (with wide-character support)
+-   **configuration:** `nlohmann/json` for persistence.
+-   **concurrency:** modern C++ (`std::thread`, `std::mutex`, `std::condition_variable`).
+-   **memory model:** RAII, smart pointers, and a clean ownership model.
 
 ## 🙏 acknowledgements
 
-- **[libmpv](https://mpv.io/)** - robust media playback engine
-- **[ncurses](https://invisible-island.net/ncurses/)** - terminal user interface library  
-- **[nlohmann/json](https://github.com/nlohmann/json)** - modern c++ json library
-- **all the radio stations** - for keeping real, human-curated music alive
-- **ai assistance** - gemini 2.5 pro and claude sonnet 4 helped with development and documentation
+-   **[libmpv](https://mpv.io/)** - for the robust and powerful media playback engine.
+-   **[ncurses](https://invisible-island.net/ncurses/)** - for the foundational terminal UI library.
+-   **[nlohmann/json](https://github.com/nlohmann/json)** - for the excellent and easy-to-use JSON library.
+-   **AI collaboration:** the architecture, code, and documentation were heavily shaped through conversation with large language models, primarily **Gemini 2.5 Pro** and **Claude 4 Sonnet**.
+-   **all the radio stations** - for keeping real, human-curated music alive.
+
+## 📜 license
+
+this project is licensed under the Mozilla Public License 2.0 (MPL-2.0).
 
 ---
 
-*"the algorithm knows what you liked yesterday. radio knows what you'll love tomorrow."*
+<div align="center">
+ the algorithm knows what you liked yesterday. radio knows what you'll love tomorrow.
+</div>
