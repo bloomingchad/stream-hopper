@@ -135,7 +135,7 @@ void MpvEventHandler::onBitrateProperty(mpv_event_property* prop, RadioStream& s
         int old_bitrate = station.getBitrate();
         int new_bitrate = static_cast<int>(*reinterpret_cast<int64_t*>(prop->data) / 1000);
         station.setBitrate(new_bitrate);
-        if (station.getID() == m_manager.m_active_station_idx && std::abs(new_bitrate - old_bitrate) > BITRATE_REDRAW_THRESHOLD) {
+        if (station.getID() == m_manager.m_session_state.active_station_idx && std::abs(new_bitrate - old_bitrate) > BITRATE_REDRAW_THRESHOLD) {
             m_manager.getNeedsRedrawFlag() = true;
         }
     }

@@ -5,6 +5,7 @@
 #include <unordered_set>
 #include <vector>
 #include <utility> // For std::pair
+#include <deque>   // For std::deque
 
 namespace Strategy {
 

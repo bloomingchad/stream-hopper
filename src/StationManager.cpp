@@ -1,6 +1,7 @@
 #include "StationManager.h"
 #include "PersistenceManager.h"
 #include "Core/MpvEventHandler.h"
+#include "SessionState.h"
 #include "Utils.h"
 #include <algorithm>
 #include <stdexcept>
@@ -27,15 +28,10 @@ namespace {
 }
 
 StationManager::StationManager(const StationData& station_data)
-    : m_unsaved_history_count(0), m_active_station_idx(0),
-      m_copy_mode_active(false), m_active_panel(ActivePanel::STATIONS),
-      m_history_scroll_offset(0), m_auto_hop_mode_active(false),
-      m_hopper_mode(HopperMode::BALANCED),
-      m_last_switch_time(std::chrono::steady_clock::now()),
-      m_session_start_time(std::chrono::steady_clock::now()),
-      m_session_switches(0), m_new_songs_found(0), m_songs_copied(0),
-      m_was_quit_by_mute_timeout(false),
-      m_quit_flag(false), m_needs_redraw(true)
+    : m_unsaved_history_count(0),
+      m_session_state(), // Initializes with default constructor
+      m_quit_flag(false),
+      m_needs_redraw(true)
 {
     if (station_data.empty()) {
         throw std::runtime_error("No radio stations provided.");
@@ -65,7 +61,7 @@ StationManager::StationManager(const StationData& station_data)
         auto it = std::find_if(m_stations.begin(), m_stations.end(),
                                [&](const RadioStream& station) { return station.getName() == *last_station_name; });
         if (it != m_stations.end()) {
-            m_active_station_idx = std::distance(m_stations.begin(), it);
+            m_session_state.active_station_idx = std::distance(m_stations.begin(), it);
         }
     }
 
@@ -81,28 +77,28 @@ StationManager::~StationManager() {
     PersistenceManager persistence;
     persistence.saveHistory(*m_song_history);
     persistence.saveFavorites(m_stations);
-    if (!m_stations.empty() && m_active_station_idx >= 0 && m_active_station_idx < (int)m_stations.size()) {
-        persistence.saveSession(m_stations[m_active_station_idx].getName());
+    if (!m_stations.empty() && m_session_state.active_station_idx >= 0 && m_session_state.active_station_idx < (int)m_stations.size()) {
+        persistence.saveSession(m_stations[m_session_state.active_station_idx].getName());
     }
-    if (m_was_quit_by_mute_timeout) {
+    if (m_session_state.was_quit_by_mute_timeout) {
         std::cout << "Hey, you forgot about me for " << (FORGOTTEN_MUTE_SECONDS / 60) << " minutes! 😤" << std::endl;
     } else {
         auto end_time = std::chrono::steady_clock::now();
-        auto duration_seconds = std::chrono::duration_cast<std::chrono::seconds>(end_time - m_session_start_time).count();
+        auto duration_seconds = std::chrono::duration_cast<std::chrono::seconds>(end_time - m_session_state.session_start_time).count();
         long duration_minutes = duration_seconds / 60;
-        std::cout << "---\n" << "Thank you for using Stream Hopper!\n" << "🎛️ Session Switches: " << m_session_switches << "\n" << "✨ New Songs Found: " << m_new_songs_found << "\n" << "📋 Songs Copied: " << m_songs_copied << "\n" << "🕐 Total Time: " << duration_minutes << " minutes\n" << "---" << std::endl;
+        std::cout << "---\n" << "Thank you for using Stream Hopper!\n" << "🎛️ Session Switches: " << m_session_state.session_switches << "\n" << "✨ New Songs Found: " << m_session_state.new_songs_found << "\n" << "📋 Songs Copied: " << m_session_state.songs_copied << "\n" << "🕐 Total Time: " << duration_minutes << " minutes\n" << "---" << std::endl;
     }
 }
 
 StateSnapshot StationManager::createSnapshot() const {
     std::lock_guard<std::mutex> lock(m_stations_mutex);
     StateSnapshot snapshot;
-    snapshot.active_station_idx = m_active_station_idx;
-    snapshot.active_panel = m_active_panel;
-    snapshot.is_copy_mode_active = m_copy_mode_active;
-    snapshot.is_auto_hop_mode_active = m_auto_hop_mode_active;
-    snapshot.history_scroll_offset = m_history_scroll_offset;
-    snapshot.hopper_mode = m_hopper_mode;
+    snapshot.active_station_idx = m_session_state.active_station_idx;
+    snapshot.active_panel = m_session_state.active_panel;
+    snapshot.is_copy_mode_active = m_session_state.copy_mode_active;
+    snapshot.is_auto_hop_mode_active = m_session_state.auto_hop_mode_active;
+    snapshot.history_scroll_offset = m_session_state.history_scroll_offset;
+    snapshot.hopper_mode = m_session_state.hopper_mode;
     snapshot.stations.reserve(m_stations.size());
     for (const auto& station : m_stations) {
         snapshot.stations.push_back({
@@ -132,9 +128,9 @@ StateSnapshot StationManager::createSnapshot() const {
         snapshot.auto_hop_total_duration = AUTO_HOP_TOTAL_TIME_SECONDS / static_cast<int>(m_stations.size());
     }
     snapshot.auto_hop_remaining_seconds = 0;
-    if (m_auto_hop_mode_active) {
+    if (m_session_state.auto_hop_mode_active) {
         auto now = std::chrono::steady_clock::now();
-        auto elapsed_s = std::chrono::duration_cast<std::chrono::seconds>(now - m_auto_hop_start_time).count();
+        auto elapsed_s = std::chrono::duration_cast<std::chrono::seconds>(now - m_session_state.auto_hop_start_time).count();
         snapshot.auto_hop_remaining_seconds = std::max(0, snapshot.auto_hop_total_duration - static_cast<int>(elapsed_s));
     }
     return snapshot;
@@ -147,11 +143,7 @@ void StationManager::post(StationManagerMessage message) {
 
 std::atomic<bool>& StationManager::getQuitFlag() { return m_quit_flag; }
 std::atomic<bool>& StationManager::getNeedsRedrawFlag() { return m_needs_redraw; }
-// This is the heart of the application, running on its own thread.
-// It processes messages from a queue (the actor model) to ensure all state
-// mutations are serialized and thread-safe. It never directly blocks on
-// user input, instead using a timeout-based loop to handle background tasks
-// like fades, timers, and polling mpv events.
+
 void StationManager::actorLoop() {
     updateActiveWindow();
     while(!m_quit_flag) {
@@ -196,54 +188,54 @@ void StationManager::actorLoop() {
 }
 
 void StationManager::handle_navigate(NavDirection direction) {
-    if (m_active_station_idx >= 0 && m_active_station_idx < (int)m_stations.size()) {
-        auto& current_station_obj = m_stations[m_active_station_idx];
+    if (m_session_state.active_station_idx >= 0 && m_session_state.active_station_idx < (int)m_stations.size()) {
+        auto& current_station_obj = m_stations[m_session_state.active_station_idx];
         if (current_station_obj.getCyclingState() != CyclingState::IDLE) {
             current_station_obj.finalizeCycle(false);
         }
     }
 
-    if (m_hopper_mode == HopperMode::FOCUS) m_hopper_mode = HopperMode::BALANCED;
-    if (m_active_panel == ActivePanel::STATIONS) {
+    if (m_session_state.hopper_mode == HopperMode::FOCUS) m_session_state.hopper_mode = HopperMode::BALANCED;
+    if (m_session_state.active_panel == ActivePanel::STATIONS) {
         if (m_stations.empty()) return;
         int station_count = m_stations.size();
-        int old_idx = m_active_station_idx;
+        int old_idx = m_session_state.active_station_idx;
         int new_idx = (direction == NavDirection::DOWN) ? (old_idx + 1) % station_count : (old_idx - 1 + station_count) % station_count;
         if (new_idx != old_idx) {
             RadioStream& current_station = m_stations[old_idx];
             if (current_station.isInitialized() && current_station.getPlaybackState() != PlaybackState::Muted) {
                 fadeAudio(old_idx, 0.0, FADE_TIME_MS, false);
             }
-            m_session_switches++;
-            m_last_switch_time = std::chrono::steady_clock::now();
+            m_session_state.session_switches++;
+            m_session_state.last_switch_time = std::chrono::steady_clock::now();
         }
-        m_active_station_idx = new_idx;
-        m_nav_history.push_back({direction, std::chrono::steady_clock::now()});
-        if (m_nav_history.size() > MAX_NAV_HISTORY) {
-            m_nav_history.pop_front();
+        m_session_state.active_station_idx = new_idx;
+        m_session_state.nav_history.push_back({direction, std::chrono::steady_clock::now()});
+        if (m_session_state.nav_history.size() > MAX_NAV_HISTORY) {
+            m_session_state.nav_history.pop_front();
         }
         updateActiveWindow();
-        m_history_scroll_offset = 0;
+        m_session_state.history_scroll_offset = 0;
     } else {
         size_t history_size = 0;
         if (!m_stations.empty()) {
-            const auto& name = m_stations[m_active_station_idx].getName();
+            const auto& name = m_stations[m_session_state.active_station_idx].getName();
             if (m_song_history->contains(name)) {
                 history_size = (*m_song_history)[name].size();
             }
         }
         if (direction == NavDirection::UP) {
-            if (m_history_scroll_offset > 0) m_history_scroll_offset--;
+            if (m_session_state.history_scroll_offset > 0) m_session_state.history_scroll_offset--;
         } else {
-            if (history_size > 0 && m_history_scroll_offset < (int)history_size - 1) m_history_scroll_offset++;
+            if (history_size > 0 && m_session_state.history_scroll_offset < (int)history_size - 1) m_session_state.history_scroll_offset++;
         }
     }
     m_needs_redraw = true;
 }
 
 void StationManager::handle_cycleUrl() {
-    if (m_active_station_idx < 0 || m_active_station_idx >= (int)m_stations.size()) return;
-    RadioStream& station = m_stations[m_active_station_idx];
+    if (m_session_state.active_station_idx < 0 || m_session_state.active_station_idx >= (int)m_stations.size()) return;
+    RadioStream& station = m_stations[m_session_state.active_station_idx];
     if (station.getCyclingState() != CyclingState::IDLE || station.getAllUrls().size() <= 1) return;
 
     station.startCycle();
@@ -300,34 +292,34 @@ void StationManager::handle_updateAndPoll() {
     pollMpvEvents();
 
     auto now = std::chrono::steady_clock::now();
-    if (m_copy_mode_active) {
-        if (std::chrono::duration_cast<std::chrono::seconds>(now - m_copy_mode_start_time).count() >= COPY_MODE_TIMEOUT_SECONDS) {
+    if (m_session_state.copy_mode_active) {
+        if (std::chrono::duration_cast<std::chrono::seconds>(now - m_session_state.copy_mode_start_time).count() >= COPY_MODE_TIMEOUT_SECONDS) {
             handle_toggleCopyMode();
         }
     }
-    if (m_auto_hop_mode_active) {
+    if (m_session_state.auto_hop_mode_active) {
         auto station_count = m_stations.size();
         if (station_count > 0) {
             int duration = AUTO_HOP_TOTAL_TIME_SECONDS / static_cast<int>(station_count);
-            if (std::chrono::duration_cast<std::chrono::seconds>(now - m_auto_hop_start_time).count() >= duration) {
+            if (std::chrono::duration_cast<std::chrono::seconds>(now - m_session_state.auto_hop_start_time).count() >= duration) {
                 handle_navigate(NavDirection::DOWN);
-                m_auto_hop_start_time = std::chrono::steady_clock::now();
+                m_session_state.auto_hop_start_time = std::chrono::steady_clock::now();
             }
         }
     }
-    if (!m_auto_hop_mode_active && m_hopper_mode != HopperMode::FOCUS) {
-        if (std::chrono::duration_cast<std::chrono::seconds>(now - m_last_switch_time).count() >= FOCUS_MODE_SECONDS) {
-            m_hopper_mode = HopperMode::FOCUS;
+    if (!m_session_state.auto_hop_mode_active && m_session_state.hopper_mode != HopperMode::FOCUS) {
+        if (std::chrono::duration_cast<std::chrono::seconds>(now - m_session_state.last_switch_time).count() >= FOCUS_MODE_SECONDS) {
+            m_session_state.hopper_mode = HopperMode::FOCUS;
             updateActiveWindow();
             m_needs_redraw = true;
         }
     }
-    if (!m_auto_hop_mode_active && !m_stations.empty()) {
-        const auto& active_station = m_stations[m_active_station_idx];
+    if (!m_session_state.auto_hop_mode_active && !m_stations.empty()) {
+        const auto& active_station = m_stations[m_session_state.active_station_idx];
         if (active_station.getPlaybackState() == PlaybackState::Muted) {
             if (auto mute_start = active_station.getMuteStartTime()) {
                 if (std::chrono::duration_cast<std::chrono::seconds>(now - *mute_start).count() >= FORGOTTEN_MUTE_SECONDS) {
-                    m_was_quit_by_mute_timeout = true;
+                    m_session_state.was_quit_by_mute_timeout = true;
                     handle_quit();
                 }
             }
@@ -350,8 +342,8 @@ void StationManager::pollMpvEvents() {
             }
         }
 
-        if(m_active_station_idx >=0 && m_active_station_idx < (int)m_stations.size()) {
-            auto& station = m_stations[m_active_station_idx];
+        if(m_session_state.active_station_idx >=0 && m_session_state.active_station_idx < (int)m_stations.size()) {
+            auto& station = m_stations[m_session_state.active_station_idx];
             if(station.getCyclingState() == CyclingState::CYCLING && station.getPendingMpvInstance().get()) {
                 mpv_event* event = mpv_wait_event(station.getPendingMpvInstance().get(), 0);
                 if (event->event_id != MPV_EVENT_NONE) {
@@ -435,34 +427,34 @@ void StationManager::handle_activeFades() {
 }
 
 void StationManager::handle_toggleMute() {
-    if (m_active_station_idx < 0 || m_active_station_idx >= (int)m_stations.size()) return;
-    RadioStream& station = m_stations[m_active_station_idx];
+    if (m_session_state.active_station_idx < 0 || m_session_state.active_station_idx >= (int)m_stations.size()) return;
+    RadioStream& station = m_stations[m_session_state.active_station_idx];
     if (!station.isInitialized() || station.getPlaybackState() == PlaybackState::Ducked) return;
     if (station.getPlaybackState() == PlaybackState::Muted) {
         station.setPlaybackState(PlaybackState::Playing);
         station.resetMuteStartTime();
-        fadeAudio(m_active_station_idx, station.getPreMuteVolume(), FADE_TIME_MS / 2, false);
+        fadeAudio(m_session_state.active_station_idx, station.getPreMuteVolume(), FADE_TIME_MS / 2, false);
     } else {
         station.setPreMuteVolume(station.getCurrentVolume());
         station.setPlaybackState(PlaybackState::Muted);
         station.setMuteStartTime();
-        fadeAudio(m_active_station_idx, 0.0, FADE_TIME_MS / 2, false);
+        fadeAudio(m_session_state.active_station_idx, 0.0, FADE_TIME_MS / 2, false);
     }
     m_needs_redraw = true;
 }
 
 void StationManager::handle_toggleAutoHop() {
-    m_auto_hop_mode_active = !m_auto_hop_mode_active;
-    if (m_auto_hop_mode_active) {
-        m_last_switch_time = std::chrono::steady_clock::now();
-        m_auto_hop_start_time = std::chrono::steady_clock::now();
+    m_session_state.auto_hop_mode_active = !m_session_state.auto_hop_mode_active;
+    if (m_session_state.auto_hop_mode_active) {
+        m_session_state.last_switch_time = std::chrono::steady_clock::now();
+        m_session_state.auto_hop_start_time = std::chrono::steady_clock::now();
         if(!m_stations.empty()) {
-            const auto& station = m_stations[m_active_station_idx];
+            const auto& station = m_stations[m_session_state.active_station_idx];
             if (station.getPlaybackState() != PlaybackState::Playing) {
                 handle_toggleMute();
             }
             if (station.getCurrentVolume() < 50.0) {
-                fadeAudio(m_active_station_idx, 100.0, FADE_TIME_MS, false);
+                fadeAudio(m_session_state.active_station_idx, 100.0, FADE_TIME_MS, false);
             }
         }
     }
@@ -470,55 +462,57 @@ void StationManager::handle_toggleAutoHop() {
 }
 
 void StationManager::handle_toggleFavorite() {
-    if (m_active_station_idx >= 0 && m_active_station_idx < (int)m_stations.size()) {
-        m_stations[m_active_station_idx].toggleFavorite();
+    if (m_session_state.active_station_idx >= 0 && m_session_state.active_station_idx < (int)m_stations.size()) {
+        m_stations[m_session_state.active_station_idx].toggleFavorite();
     }
     m_needs_redraw = true;
 }
 
 void StationManager::handle_toggleDucking() {
-    if (m_active_station_idx < 0 || m_active_station_idx >= (int)m_stations.size()) return;
-    RadioStream& station = m_stations[m_active_station_idx];
+    if (m_session_state.active_station_idx < 0 || m_session_state.active_station_idx >= (int)m_stations.size()) return;
+    RadioStream& station = m_stations[m_session_state.active_station_idx];
     if (!station.isInitialized() || station.getPlaybackState() == PlaybackState::Muted) return;
     if (station.getPlaybackState() == PlaybackState::Ducked) {
         station.setPlaybackState(PlaybackState::Playing);
-        fadeAudio(m_active_station_idx, station.getPreMuteVolume(), FADE_TIME_MS, false);
+        fadeAudio(m_session_state.active_station_idx, station.getPreMuteVolume(), FADE_TIME_MS, false);
     } else {
         station.setPreMuteVolume(station.getCurrentVolume());
         station.setPlaybackState(PlaybackState::Ducked);
-        fadeAudio(m_active_station_idx, DUCK_VOLUME, FADE_TIME_MS, false);
+        fadeAudio(m_session_state.active_station_idx, DUCK_VOLUME, FADE_TIME_MS, false);
     }
     m_needs_redraw = true;
 }
 
 void StationManager::handle_toggleCopyMode() {
-    m_copy_mode_active = !m_copy_mode_active;
-    if (m_copy_mode_active) {
-        m_copy_mode_start_time = std::chrono::steady_clock::now();
+    m_session_state.copy_mode_active = !m_session_state.copy_mode_active;
+    if (m_session_state.copy_mode_active) {
+        m_session_state.copy_mode_start_time = std::chrono::steady_clock::now();
     }
     m_needs_redraw = true;
 }
 
 void StationManager::handle_toggleHopperMode() {
-    m_hopper_mode = (m_hopper_mode == HopperMode::PERFORMANCE) ? HopperMode::BALANCED : HopperMode::PERFORMANCE;
+    m_session_state.hopper_mode = (m_session_state.hopper_mode == HopperMode::PERFORMANCE) ? HopperMode::BALANCED : HopperMode::PERFORMANCE;
     updateActiveWindow();
     m_needs_redraw = true;
 }
 
 void StationManager::handle_switchPanel() {
-    m_active_panel = (m_active_panel == ActivePanel::STATIONS) ? ActivePanel::HISTORY : ActivePanel::STATIONS;
+    m_session_state.active_panel = (m_session_state.active_panel == ActivePanel::STATIONS) ? ActivePanel::HISTORY : ActivePanel::STATIONS;
     m_needs_redraw = true;
 }
 
 void StationManager::handle_quit() {
     m_quit_flag = true;
 }
-// This function determines which mpv instances should be active (pre-loaded)
-// vs. which should be shut down to conserve resources. It compares the
-// previously active set of stations with a newly calculated one based on the
-// current HopperMode and navigation history.
+
 void StationManager::updateActiveWindow() {
-    const auto new_active_set = m_preloader.calculate_active_indices( m_active_station_idx, m_stations.size(), m_hopper_mode, m_nav_history);
+    const auto new_active_set = m_preloader.calculate_active_indices(
+        m_session_state.active_station_idx,
+        m_stations.size(),
+        m_session_state.hopper_mode,
+        m_session_state.nav_history
+    );
     std::vector<int> to_shutdown;
     for (int idx : m_active_station_indices) {
         if (new_active_set.find(idx) == new_active_set.end()) {
@@ -533,17 +527,17 @@ void StationManager::updateActiveWindow() {
             initializeStation(idx);
         }
     }
-    if(m_active_station_idx >= 0 && m_active_station_idx < (int)m_stations.size()) {
-        RadioStream& new_station = m_stations[m_active_station_idx];
+    if(m_session_state.active_station_idx >= 0 && m_session_state.active_station_idx < (int)m_stations.size()) {
+        RadioStream& new_station = m_stations[m_session_state.active_station_idx];
         if (new_station.isInitialized() && new_station.getPlaybackState() != PlaybackState::Muted && new_station.getCurrentVolume() < 99.0) {
-            fadeAudio(m_active_station_idx, 100.0, FADE_TIME_MS, false);
+            fadeAudio(m_session_state.active_station_idx, 100.0, FADE_TIME_MS, false);
         }
     }
 }
 
 void StationManager::initializeStation(int station_idx) {
     if (station_idx < 0 || station_idx >= (int)m_stations.size()) return;
-    double vol = (station_idx == m_active_station_idx) ? 100.0 : 0.0;
+    double vol = (station_idx == m_session_state.active_station_idx) ? 100.0 : 0.0;
     m_stations[station_idx].initialize(vol);
     m_active_station_indices.insert(station_idx);
 }
@@ -562,7 +556,7 @@ void StationManager::saveHistoryToDisk() {
 
 void StationManager::addHistoryEntry(const std::string& station_name, const nlohmann::json& entry) {
     (*m_song_history)[station_name].push_back(entry);
-    m_new_songs_found++;
+    m_session_state.new_songs_found++;
     if (++m_unsaved_history_count >= HISTORY_WRITE_THRESHOLD) {
         saveHistoryToDisk();
     }
