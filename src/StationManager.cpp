@@ -147,7 +147,11 @@ void StationManager::post(StationManagerMessage message) {
 
 std::atomic<bool>& StationManager::getQuitFlag() { return m_quit_flag; }
 std::atomic<bool>& StationManager::getNeedsRedrawFlag() { return m_needs_redraw; }
-
+// This is the heart of the application, running on its own thread.
+// It processes messages from a queue (the actor model) to ensure all state
+// mutations are serialized and thread-safe. It never directly blocks on
+// user input, instead using a timeout-based loop to handle background tasks
+// like fades, timers, and polling mpv events.
 void StationManager::actorLoop() {
     updateActiveWindow();
     while(!m_quit_flag) {
@@ -509,7 +513,10 @@ void StationManager::handle_switchPanel() {
 void StationManager::handle_quit() {
     m_quit_flag = true;
 }
-
+// This function determines which mpv instances should be active (pre-loaded)
+// vs. which should be shut down to conserve resources. It compares the
+// previously active set of stations with a newly calculated one based on the
+// current HopperMode and navigation history.
 void StationManager::updateActiveWindow() {
     const auto new_active_set = m_preloader.calculate_active_indices( m_active_station_idx, m_stations.size(), m_hopper_mode, m_nav_history);
     std::vector<int> to_shutdown;
