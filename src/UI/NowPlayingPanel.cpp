@@ -71,10 +71,10 @@ void NowPlayingPanel::drawCycleStatus(const StationDisplayData& station, int inn
             break;
         }
         case CyclingState::SUCCEEDED:
-            status_text = station.name + " [ ✓ OK ]";
+            status_text = station.name + " [ ✅ ]";
             break;
         case CyclingState::FAILED:
-            status_text = station.name + " [ ! Failed ]";
+            status_text = station.name + " [ ❌ Failed ]";
             break;
         case CyclingState::IDLE:
             status_text = station.name;
