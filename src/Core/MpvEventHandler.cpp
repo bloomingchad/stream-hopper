@@ -22,14 +22,13 @@ namespace {
 }
 
 MpvEventHandler::MpvEventHandler(StationManager& manager) : m_manager(manager) {}
-
 void MpvEventHandler::handleEvent(mpv_event* event) {
     if (event->event_id == MPV_EVENT_PROPERTY_CHANGE) {
         handlePropertyChange(event);
     } else if (event->event_id == MPV_EVENT_END_FILE) {
         if (event->reply_userdata >= PENDING_INSTANCE_ID_OFFSET) {
             int station_id = event->reply_userdata - PENDING_INSTANCE_ID_OFFSET;
-            if (station_id >= 0 && station_id < (int)m_manager.m_stations.size()) {
+            if (station_id < (int)m_manager.m_stations.size()) { // The 'station_id >= 0' check is redundant
                 auto& station = m_manager.m_stations[station_id];
                 if (station.getCyclingState() == CyclingState::CYCLING) {
                     station.finalizeCycle(false);
@@ -45,7 +44,7 @@ void MpvEventHandler::handlePropertyChange(mpv_event* event) {
     
     if (event->reply_userdata >= PENDING_INSTANCE_ID_OFFSET) {
         int station_id = event->reply_userdata - PENDING_INSTANCE_ID_OFFSET;
-        if (station_id < 0 || station_id >= (int)m_manager.m_stations.size()) return;
+        if (station_id >= (int)m_manager.m_stations.size()) return; // The 'station_id < 0' check is redundant
         auto& station = m_manager.m_stations[station_id];
 
         if (station.getCyclingState() != CyclingState::CYCLING) {
