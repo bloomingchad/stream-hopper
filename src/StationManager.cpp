@@ -110,7 +110,8 @@ StateSnapshot StationManager::createSnapshot() const {
             .bitrate = station.getBitrate(), .current_volume = station.getCurrentVolume(),
             .is_initialized = station.isInitialized(), .is_favorite = station.isFavorite(),
             .is_buffering = station.isBuffering(), .playback_state = station.getPlaybackState(),
-            .cycling_state = station.getCyclingState(), .pending_bitrate = station.getPendingBitrate()
+            .cycling_state = station.getCyclingState(), .pending_bitrate = station.getPendingBitrate(),
+            .url_count = station.getAllUrls().size()
         });
     }
     snapshot.current_volume_for_header = 0.0;

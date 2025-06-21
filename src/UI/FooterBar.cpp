@@ -2,19 +2,18 @@
 #include "UI/UIUtils.h"
 #include <ncurses.h>
 #include <string>
-
-void FooterBar::draw(bool is_compact, bool is_copy_mode_active, bool is_auto_hop_mode_active) {
+void FooterBar::draw(bool is_compact, bool is_copy_mode_active, bool is_auto_hop_mode_active, bool can_cycle_url) {
     std::string footer_text;
+    std::string cycle_text = can_cycle_url ? "[+] Cycle " : "";
+
     if (is_copy_mode_active) {
         footer_text = " [COPY MODE] UI Paused. Press any key to resume... ";
     } else if (is_auto_hop_mode_active) {
         footer_text = " [A] Stop Auto-Hop   [C] Copy Mode   [Q] Quit ";
     } else if (is_compact) {
-        // Adding [+] Cycle to compact mode
-        footer_text = " [P] Mode [A] Auto [Nav] [+] Cycle [Tab] Panel [F] Fav [D] Duck [C] Copy [Q] Quit ";
+        footer_text = " [P] Mode [A] Auto [Nav] " + cycle_text + "[Tab] Panel [F] Fav [D] Duck [C] Copy [Q] Quit ";
     } else {
-        // Adding [+] Cycle to full mode
-        footer_text = " [P] Mode [A] Auto-Hop [↑↓] Nav [↵] Mute [+] Cycle [D] Duck [⇥] Panel [F] Fav [C] Copy [Q] Quit ";
+        footer_text = " [P] Mode [A] Auto-Hop [↑↓] Nav [↵] Mute " + cycle_text + "[D] Duck [⇥] Panel [F] Fav [C] Copy [Q] Quit ";
     }
     
     attron(A_REVERSE);

@@ -51,7 +51,13 @@ void UIManager::draw(const StateSnapshot& snapshot) {
         *m_now_playing_panel, *m_history_panel, snapshot
     );
     m_header_bar->draw(snapshot.current_volume_for_header, snapshot.hopper_mode);
-    m_footer_bar->draw(m_is_compact_mode, snapshot.is_copy_mode_active, snapshot.is_auto_hop_mode_active);
+
+    bool can_cycle_url = false;
+    if (!snapshot.stations.empty()) {
+        can_cycle_url = snapshot.stations[snapshot.active_station_idx].url_count > 1;
+    }
+    
+    m_footer_bar->draw(m_is_compact_mode, snapshot.is_copy_mode_active, snapshot.is_auto_hop_mode_active, can_cycle_url);
 
     if (snapshot.stations.empty()) {
         refresh();

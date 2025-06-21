@@ -20,6 +20,7 @@ struct StationDisplayData {
     PlaybackState playback_state;
     CyclingState cycling_state;
     int pending_bitrate; // For displaying during URL cycle
+    size_t url_count;
 };
 
 // A struct to hold a guaranteed-consistent snapshot of ALL data needed for the UI.
