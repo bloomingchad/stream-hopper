@@ -340,7 +340,7 @@ void StationManager::pollMpvEvents() {
     while(events_pending) {
         events_pending = false;
         
-        const auto indices_to_poll = m_active_station_indices;
+        const auto& indices_to_poll = m_active_station_indices;
         for(int station_idx : indices_to_poll) { 
             if (station_idx >= (int)m_stations.size() || !m_stations[station_idx].isInitialized()) continue;
             mpv_event *event = mpv_wait_event(m_stations[station_idx].getMpvHandle(), 0);
