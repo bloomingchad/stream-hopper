@@ -41,6 +41,72 @@ using StationManagerMessage = std::variant<
     Msg::ToggleHopperMode, Msg::SwitchPanel, Msg::CycleUrl, Msg::UpdateAndPoll, Msg::Quit
 >;
 
+/*!
+
+@class StationManager
+
+@brief The central actor managing all application state and audio playback.
+
+This class runs in its own dedicated thread and processes messages from a queue
+
+to ensure all state modifications and interactions with the libmpv C-API are
+
+thread-safe. It is the single source of truth for application state.
+
+--- UI Redraw Philosophy (IMPORTANT) ---
+
+The m_needs_redraw flag is the sole mechanism for triggering a UI update.
+
+It must be set to true whenever the internal state changes in a way that
+
+needs to be visually communicated to the user. Failure to set the flag results
+
+in a stale, unresponsive UI. Setting it unnecessarily causes excessive CPU usage
+
+and screen flicker.
+
+A redraw is warranted under the following conditions:
+
+Direct User Actions (Immediate Feedback):
+
+A redraw is required when the user performs an action and expects to see an
+
+instant result. This includes: Navigation (moving the highlight, updating
+
+panels for the new context), Toggles (updating icons and volume bars for Mute,
+
+Favorite, or Ducking), Panel Focus (coloring the active panel's border), URL
+
+Cycling (showing in-progress and success/failure feedback), and Mode Switching
+
+(updating headers/footers to reflect the new global mode).
+
+Asynchronous Backend Events (Live Data Updates):
+
+A redraw is required when the application receives new information from a
+
+background source like mpv. This includes: a New Song Title (updating the
+
+"Now Playing" and "History" panels is a core feature), a change in Stream
+
+Quality (updating the bitrate indicator), a Stream Buffering event (showing a
+
+"Buffering..." indicator), or a Stream Error (showing a "Reconnecting..."
+
+message).
+
+Internal Timers and State Transitions (Automated Updates):
+
+A redraw is required when the application's internal logic triggers a visual
+
+change. This includes: each step of an Audio Fade to animate the volume bar,
+
+ticks of the Auto-Hop Timer to update the progress bar, and the clearing of
+
+temporary status indicators (like a success/fail icon) after their timeout.
+
+Adherence to these principles is critical to prevent UI regressions.
+*/
 class StationManager {
 public:
     StationManager(const StationData& station_data);
