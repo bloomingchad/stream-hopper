@@ -3,6 +3,7 @@
 
 #include "RadioStream.h"
 #include "Core/PreloadStrategy.h"
+#include "Core/MessageHandler.h" // Include the new header
 #include "SessionState.h"
 #include "UI/StateSnapshot.h"
 #include "PersistenceManager.h"
@@ -115,24 +116,30 @@ public:
     StateSnapshot createSnapshot() const;
     std::atomic<bool>& getNeedsRedrawFlag();
     std::atomic<bool>& getQuitFlag();
+
 private:
     friend class MpvEventHandler;
+    friend class MessageHandler; // Grant access to our new helper
+
+    // Methods that are NOT message handlers remain here
+    void actorLoop();
+    void handle_activeFades();
+    void pollMpvEvents();
+    void handle_cycle_status_timers();
+    void handle_cycle_timeouts();
+    void crossFadeToPending(int station_id);
+    void updateActiveWindow();
+    void fadeAudio(int station_id, double to_vol, int duration_ms, bool for_pending = false);
+    void initializeStation(int station_idx);
+    void shutdownStation(int station_idx);
+    void saveHistoryToDisk();
+    void addHistoryEntry(const std::string& station_name, const nlohmann::json& entry);
+
     struct ActiveFade {
         int station_id; int generation; double start_vol; double target_vol;
         std::chrono::steady_clock::time_point start_time; int duration_ms;
         bool is_for_pending_instance; 
     };
-    void actorLoop(); void handle_activeFades(); void pollMpvEvents();
-    void handle_navigate(NavDirection direction); void handle_toggleMute();
-    void handle_toggleAutoHop(); void handle_toggleFavorite();
-    void handle_toggleDucking(); void handle_toggleCopyMode();
-    void handle_toggleHopperMode(); void handle_switchPanel();
-    void handle_cycleUrl(); void handle_updateAndPoll(); void handle_quit();
-    void handle_cycle_status_timers(); void crossFadeToPending(int station_id);
-    void handle_cycle_timeouts();
-    void updateActiveWindow(); void fadeAudio(int station_id, double to_vol, int duration_ms, bool for_pending = false);
-    void initializeStation(int station_idx); void shutdownStation(int station_idx);
-    void saveHistoryToDisk(); void addHistoryEntry(const std::string& station_name, const nlohmann::json& entry);
 
     // Core Components & Data
     mutable std::mutex m_stations_mutex;
@@ -141,6 +148,7 @@ private:
     std::unordered_set<int> m_active_station_indices;
     Strategy::Preloader m_preloader;
     std::unique_ptr<MpvEventHandler> m_event_handler;
+    std::unique_ptr<MessageHandler> m_message_handler; // Add the handler
     std::unique_ptr<nlohmann::json> m_song_history;
     int m_unsaved_history_count;
 
@@ -154,6 +162,10 @@ private:
     std::deque<StationManagerMessage> m_message_queue;
     std::mutex m_queue_mutex;
     std::condition_variable m_queue_cond;
+
+    // Constants
+    static constexpr size_t MAX_NAV_HISTORY = 10;
+    static constexpr int HISTORY_WRITE_THRESHOLD = 5;
 };
 
 #endif // STATIONMANAGER_H

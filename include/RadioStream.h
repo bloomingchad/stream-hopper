@@ -37,6 +37,7 @@ public:
     std::chrono::steady_clock::time_point getCycleStatusEndTime() const;
     const std::string& getNextUrl() const;
     MpvInstance& getPendingMpvInstance();
+    const std::string& getPendingTitle() const; // <-- ADD THIS DECLARATION
     int getPendingBitrate() const;
     std::optional<std::chrono::steady_clock::time_point> getCycleStartTime() const;
     // ------------------------------------

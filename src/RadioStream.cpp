@@ -159,6 +159,7 @@ std::optional<std::chrono::steady_clock::time_point> RadioStream::getCycleStartT
 std::chrono::steady_clock::time_point RadioStream::getCycleStatusEndTime() const { return m_cycle_status_end_time; }
 const std::string& RadioStream::getNextUrl() const { return m_urls[(m_active_url_index + 1) % m_urls.size()]; }
 MpvInstance& RadioStream::getPendingMpvInstance() { return m_pending_mpv_instance; }
+const std::string& RadioStream::getPendingTitle() const { return m_pending_title; } // <-- ADD THIS IMPLEMENTATION
 
 bool RadioStream::isInitialized() const { return m_is_initialized; }
 int RadioStream::getGeneration() const { return m_generation; }

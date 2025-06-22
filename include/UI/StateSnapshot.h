@@ -19,6 +19,7 @@ struct StationDisplayData {
     bool is_buffering;
     PlaybackState playback_state;
     CyclingState cycling_state;
+    std::string pending_title; // <-- ADD THIS FIELD
     int pending_bitrate; // For displaying during URL cycle
     size_t url_count;
 };
