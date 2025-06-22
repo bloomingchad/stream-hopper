@@ -1,7 +1,8 @@
 #include "StationManager.h"
 #include "PersistenceManager.h"
 #include "Core/MpvEventHandler.h"
-#include "Core/MessageHandler.h"
+#include "Core/ActionHandler.h"
+#include "Core/SystemHandler.h"
 #include "Core/UpdateManager.h"
 #include "SessionState.h"
 #include "Utils.h"
@@ -15,14 +16,13 @@
 #include <mpv/client.h>
 
 namespace {
-    // Constants used by StationManager's own methods
     constexpr auto ACTOR_LOOP_TIMEOUT = std::chrono::milliseconds(20);
     constexpr int CROSSFADE_TIME_MS = 1200;
 }
 
 StationManager::StationManager(const StationData& station_data)
     : m_unsaved_history_count(0),
-      m_session_state(), // Initializes with default constructor
+      m_session_state(),
       m_quit_flag(false),
       m_needs_redraw(true)
 {
@@ -59,7 +59,8 @@ StationManager::StationManager(const StationData& station_data)
     }
 
     m_event_handler = std::make_unique<MpvEventHandler>(*this);
-    m_message_handler = std::make_unique<MessageHandler>();
+    m_action_handler = std::make_unique<ActionHandler>();
+    m_system_handler = std::make_unique<SystemHandler>();
     m_update_manager = std::make_unique<UpdateManager>();
     m_actor_thread = std::thread(&StationManager::actorLoop, this);
 }
@@ -76,8 +77,6 @@ StationManager::~StationManager() {
         persistence.saveSession(m_stations[m_session_state.active_station_idx].getName());
     }
     if (m_session_state.was_quit_by_mute_timeout) {
-        // This constant is defined in MessageHandler.cpp, but we need it here for the exit message.
-        // A better solution might be a shared constants file, but this is fine for now.
         constexpr int FORGOTTEN_MUTE_SECONDS = 600;
         std::cout << "Hey, you forgot about me for " << (FORGOTTEN_MUTE_SECONDS / 60) << " minutes! 😤" << std::endl;
     } else {
@@ -123,7 +122,6 @@ StateSnapshot StationManager::createSnapshot() const {
     }
     snapshot.auto_hop_total_duration = 0;
     if (!m_stations.empty()) {
-        // This constant is defined in MessageHandler.cpp, but we need it here.
         constexpr int AUTO_HOP_TOTAL_TIME_SECONDS = 1125;
         snapshot.auto_hop_total_duration = AUTO_HOP_TOTAL_TIME_SECONDS / static_cast<int>(m_stations.size());
     }
@@ -160,8 +158,12 @@ void StationManager::actorLoop() {
             current_queue.push_back(Msg::UpdateAndPoll{});
         }
         for (auto& msg : current_queue) {
-            m_message_handler->process_message(*this, msg);
-             if (m_quit_flag) break;
+            if (std::holds_alternative<Msg::UpdateAndPoll>(msg) || std::holds_alternative<Msg::Quit>(msg)) {
+                m_system_handler->process_system(*this, msg);
+            } else {
+                m_action_handler->process_action(*this, msg);
+            }
+            if (m_quit_flag) break;
         }
     }
     for (int station_idx : m_active_station_indices) {
@@ -250,7 +252,6 @@ void StationManager::updateActiveWindow() {
     }
     if(m_session_state.active_station_idx >= 0 && m_session_state.active_station_idx < (int)m_stations.size()) {
         RadioStream& new_station = m_stations[m_session_state.active_station_idx];
-        // This constant is defined in MessageHandler.cpp, but we need it here.
         constexpr int FADE_TIME_MS = 900;
         if (new_station.isInitialized() && new_station.getPlaybackState() != PlaybackState::Muted && new_station.getCurrentVolume() < 99.0) {
             fadeAudio(m_session_state.active_station_idx, 100.0, FADE_TIME_MS, false);

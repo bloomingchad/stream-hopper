@@ -1,25 +1,18 @@
-#include "Core/MessageHandler.h"
-#include "StationManager.h" 
-#include "Core/UpdateManager.h"
+#include "Core/ActionHandler.h"
+#include "StationManager.h"
 #include "RadioStream.h"
 #include "SessionState.h"
 #include "Utils.h"
 #include <chrono>
-#include <algorithm>
-#include <variant> // Required for std::visit
+#include <variant>
 
-// Constants can be moved here if they are only used by handlers
 namespace {
     constexpr int FADE_TIME_MS = 900;
     constexpr double DUCK_VOLUME = 40.0;
-    constexpr int COPY_MODE_TIMEOUT_SECONDS = 10;
-    constexpr int FOCUS_MODE_SECONDS = 90;
-    constexpr int AUTO_HOP_TOTAL_TIME_SECONDS = 1125;
-    constexpr int FORGOTTEN_MUTE_SECONDS = 600;
     constexpr int PENDING_INSTANCE_ID_OFFSET = 10000;
 }
 
-void MessageHandler::process_message(StationManager& manager, const StationManagerMessage& msg) {
+void ActionHandler::process_action(StationManager& manager, const StationManagerMessage& msg) {
     std::visit([this, &manager](auto&& arg) {
         using T = std::decay_t<decltype(arg)>;
         if      constexpr (std::is_same_v<T, Msg::NavigateUp>)       handle_navigate(manager, NavDirection::UP);
@@ -32,12 +25,10 @@ void MessageHandler::process_message(StationManager& manager, const StationManag
         else if constexpr (std::is_same_v<T, Msg::ToggleHopperMode>) handle_toggleHopperMode(manager);
         else if constexpr (std::is_same_v<T, Msg::SwitchPanel>)      handle_switchPanel(manager);
         else if constexpr (std::is_same_v<T, Msg::CycleUrl>)         handle_cycleUrl(manager);
-        else if constexpr (std::is_same_v<T, Msg::UpdateAndPoll>)    handle_updateAndPoll(manager);
-        else if constexpr (std::is_same_v<T, Msg::Quit>)            handle_quit(manager);
     }, msg);
 }
 
-void MessageHandler::handle_navigate(StationManager& manager, NavDirection direction) {
+void ActionHandler::handle_navigate(StationManager& manager, NavDirection direction) {
     if (manager.m_session_state.active_station_idx >= 0 && manager.m_session_state.active_station_idx < (int)manager.m_stations.size()) {
         auto& current_station_obj = manager.m_stations[manager.m_session_state.active_station_idx];
         if (current_station_obj.getCyclingState() != CyclingState::IDLE) {
@@ -83,7 +74,7 @@ void MessageHandler::handle_navigate(StationManager& manager, NavDirection direc
     manager.m_needs_redraw = true;
 }
 
-void MessageHandler::handle_cycleUrl(StationManager& manager) {
+void ActionHandler::handle_cycleUrl(StationManager& manager) {
     if (manager.m_session_state.active_station_idx < 0 || manager.m_session_state.active_station_idx >= (int)manager.m_stations.size()) return;
     RadioStream& station = manager.m_stations[manager.m_session_state.active_station_idx];
     if (station.getCyclingState() != CyclingState::IDLE || station.getAllUrls().size() <= 1) return;
@@ -104,55 +95,7 @@ void MessageHandler::handle_cycleUrl(StationManager& manager) {
     check_mpv_error(mpv_observe_property(pending_instance.get(), reply_id, "audio-bitrate", MPV_FORMAT_INT64), "observe pending audio-bitrate");
 }
 
-void MessageHandler::handle_updateAndPoll(StationManager& manager) {
-    manager.m_update_manager->process_updates(manager);
-    manager.pollMpvEvents();
-
-    auto now = std::chrono::steady_clock::now();
-    if (manager.m_session_state.copy_mode_active) {
-        if (std::chrono::duration_cast<std::chrono::seconds>(now - manager.m_session_state.copy_mode_start_time).count() >= COPY_MODE_TIMEOUT_SECONDS) {
-            handle_toggleCopyMode(manager);
-        }
-    }
-    if (manager.m_session_state.auto_hop_mode_active) {
-        auto station_count = manager.m_stations.size();
-        if (station_count > 0) {
-            int duration = AUTO_HOP_TOTAL_TIME_SECONDS / static_cast<int>(station_count);
-            if (std::chrono::duration_cast<std::chrono::seconds>(now - manager.m_session_state.auto_hop_start_time).count() >= duration) {
-                handle_navigate(manager, NavDirection::DOWN);
-                manager.m_session_state.auto_hop_start_time = std::chrono::steady_clock::now();
-            }
-        }
-    }
-    if (!manager.m_session_state.auto_hop_mode_active && manager.m_session_state.hopper_mode != HopperMode::FOCUS) {
-        if (std::chrono::duration_cast<std::chrono::seconds>(now - manager.m_session_state.last_switch_time).count() >= FOCUS_MODE_SECONDS) {
-            manager.m_session_state.hopper_mode = HopperMode::FOCUS;
-            manager.updateActiveWindow();
-            manager.m_needs_redraw = true;
-        }
-    }
-    if (!manager.m_session_state.auto_hop_mode_active && !manager.m_stations.empty()) {
-        const auto& active_station = manager.m_stations[manager.m_session_state.active_station_idx];
-        if (active_station.getPlaybackState() == PlaybackState::Muted) {
-            if (auto mute_start = active_station.getMuteStartTime()) {
-                if (std::chrono::duration_cast<std::chrono::seconds>(now - *mute_start).count() >= FORGOTTEN_MUTE_SECONDS) {
-                    manager.m_session_state.was_quit_by_mute_timeout = true;
-                    handle_quit(manager);
-                }
-            }
-        }
-    }
-
-    // Check for active animations that require a constant redraw heartbeat.
-    bool is_any_station_cycling = std::any_of(manager.m_stations.begin(), manager.m_stations.end(),
-        [](const RadioStream& s) { return s.getCyclingState() == CyclingState::CYCLING; });
-
-    if (manager.m_session_state.auto_hop_mode_active || is_any_station_cycling) {
-        manager.m_needs_redraw = true;
-    }
-}
-
-void MessageHandler::handle_toggleMute(StationManager& manager) {
+void ActionHandler::handle_toggleMute(StationManager& manager) {
     if (manager.m_session_state.active_station_idx < 0 || manager.m_session_state.active_station_idx >= (int)manager.m_stations.size()) return;
     RadioStream& station = manager.m_stations[manager.m_session_state.active_station_idx];
     if (!station.isInitialized() || station.getPlaybackState() == PlaybackState::Ducked) return;
@@ -169,7 +112,7 @@ void MessageHandler::handle_toggleMute(StationManager& manager) {
     manager.m_needs_redraw = true;
 }
 
-void MessageHandler::handle_toggleAutoHop(StationManager& manager) {
+void ActionHandler::handle_toggleAutoHop(StationManager& manager) {
     manager.m_session_state.auto_hop_mode_active = !manager.m_session_state.auto_hop_mode_active;
     if (manager.m_session_state.auto_hop_mode_active) {
         manager.m_session_state.last_switch_time = std::chrono::steady_clock::now();
@@ -187,14 +130,14 @@ void MessageHandler::handle_toggleAutoHop(StationManager& manager) {
     manager.m_needs_redraw = true;
 }
 
-void MessageHandler::handle_toggleFavorite(StationManager& manager) {
+void ActionHandler::handle_toggleFavorite(StationManager& manager) {
     if (manager.m_session_state.active_station_idx >= 0 && manager.m_session_state.active_station_idx < (int)manager.m_stations.size()) {
         manager.m_stations[manager.m_session_state.active_station_idx].toggleFavorite();
     }
     manager.m_needs_redraw = true;
 }
 
-void MessageHandler::handle_toggleDucking(StationManager& manager) {
+void ActionHandler::handle_toggleDucking(StationManager& manager) {
     if (manager.m_session_state.active_station_idx < 0 || manager.m_session_state.active_station_idx >= (int)manager.m_stations.size()) return;
     RadioStream& station = manager.m_stations[manager.m_session_state.active_station_idx];
     if (!station.isInitialized() || station.getPlaybackState() == PlaybackState::Muted) return;
@@ -209,7 +152,7 @@ void MessageHandler::handle_toggleDucking(StationManager& manager) {
     manager.m_needs_redraw = true;
 }
 
-void MessageHandler::handle_toggleCopyMode(StationManager& manager) {
+void ActionHandler::handle_toggleCopyMode(StationManager& manager) {
     manager.m_session_state.copy_mode_active = !manager.m_session_state.copy_mode_active;
     if (manager.m_session_state.copy_mode_active) {
         manager.m_session_state.copy_mode_start_time = std::chrono::steady_clock::now();
@@ -217,17 +160,13 @@ void MessageHandler::handle_toggleCopyMode(StationManager& manager) {
     manager.m_needs_redraw = true;
 }
 
-void MessageHandler::handle_toggleHopperMode(StationManager& manager) {
+void ActionHandler::handle_toggleHopperMode(StationManager& manager) {
     manager.m_session_state.hopper_mode = (manager.m_session_state.hopper_mode == HopperMode::PERFORMANCE) ? HopperMode::BALANCED : HopperMode::PERFORMANCE;
     manager.updateActiveWindow();
     manager.m_needs_redraw = true;
 }
 
-void MessageHandler::handle_switchPanel(StationManager& manager) {
+void ActionHandler::handle_switchPanel(StationManager& manager) {
     manager.m_session_state.active_panel = (manager.m_session_state.active_panel == ActivePanel::STATIONS) ? ActivePanel::HISTORY : ActivePanel::STATIONS;
     manager.m_needs_redraw = true;
-}
-
-void MessageHandler::handle_quit(StationManager& manager) {
-    manager.m_quit_flag = true;
 }

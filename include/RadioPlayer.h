@@ -9,7 +9,7 @@
 
 class UIManager;
 class StationManager;
-#include "StationManager.h" // For StationManagerMessage
+#include "Core/Message.h" // Include the new message header
 
 class RadioPlayer {
 public:

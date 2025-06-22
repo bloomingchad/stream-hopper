@@ -18,8 +18,15 @@ void NowPlayingPanel::draw(const StateSnapshot& snapshot) {
 
     int inner_w = m_w - 4;
     
-    std::string title_to_show = station.is_initialized ? (station.is_buffering ? "Buffering..." : station.current_title) : "...";
-    if (station.cycling_state == CyclingState::CYCLING) {
+    // This logic is now cleaner and fixes the "Unnecessary Copy" warning from infer.
+    std::string title_to_show;
+    if (!station.is_initialized) {
+        title_to_show = "...";
+    } else if (station.is_buffering) {
+        title_to_show = "Buffering...";
+    } else {
+        // This covers both normal and cycling states, which both want current_title.
+        // Future improvements could show pending_title here during a cycle.
         title_to_show = station.current_title;
     }
     

@@ -3,7 +3,7 @@
 
 #include "RadioStream.h"
 #include "Core/PreloadStrategy.h"
-#include "Core/MessageHandler.h" // Contains message definitions now
+#include "Core/Message.h" // Include the new message header
 #include "Core/UpdateManager.h" 
 #include "SessionState.h"
 #include "UI/StateSnapshot.h"
@@ -21,8 +21,8 @@
 #include "nlohmann/json.hpp"
 
 class MpvEventHandler;
-
-// Message definitions are now in MessageHandler.h
+class ActionHandler;
+class SystemHandler;
 
 /*!
 
@@ -101,10 +101,10 @@ public:
 
 private:
     friend class MpvEventHandler;
-    friend class MessageHandler;
+    friend class ActionHandler;
+    friend class SystemHandler;
     friend class UpdateManager;
 
-    // Methods that are NOT message handlers or update handlers remain here
     void actorLoop();
     void pollMpvEvents();
     void crossFadeToPending(int station_id);
@@ -128,7 +128,8 @@ private:
     std::unordered_set<int> m_active_station_indices;
     Strategy::Preloader m_preloader;
     std::unique_ptr<MpvEventHandler> m_event_handler;
-    std::unique_ptr<MessageHandler> m_message_handler;
+    std::unique_ptr<ActionHandler> m_action_handler;
+    std::unique_ptr<SystemHandler> m_system_handler;
     std::unique_ptr<UpdateManager> m_update_manager;
     std::unique_ptr<nlohmann::json> m_song_history;
     int m_unsaved_history_count;
