@@ -3,7 +3,8 @@
 
 #include "RadioStream.h"
 #include "Core/PreloadStrategy.h"
-#include "Core/MessageHandler.h" // Include the new header
+#include "Core/MessageHandler.h"
+#include "Core/UpdateManager.h" // Include the new header
 #include "SessionState.h"
 #include "UI/StateSnapshot.h"
 #include "PersistenceManager.h"
@@ -119,14 +120,12 @@ public:
 
 private:
     friend class MpvEventHandler;
-    friend class MessageHandler; // Grant access to our new helper
+    friend class MessageHandler;
+    friend class UpdateManager; // Grant access to our new helper
 
-    // Methods that are NOT message handlers remain here
+    // Methods that are NOT message handlers or update handlers remain here
     void actorLoop();
-    void handle_activeFades();
     void pollMpvEvents();
-    void handle_cycle_status_timers();
-    void handle_cycle_timeouts();
     void crossFadeToPending(int station_id);
     void updateActiveWindow();
     void fadeAudio(int station_id, double to_vol, int duration_ms, bool for_pending = false);
@@ -148,7 +147,8 @@ private:
     std::unordered_set<int> m_active_station_indices;
     Strategy::Preloader m_preloader;
     std::unique_ptr<MpvEventHandler> m_event_handler;
-    std::unique_ptr<MessageHandler> m_message_handler; // Add the handler
+    std::unique_ptr<MessageHandler> m_message_handler;
+    std::unique_ptr<UpdateManager> m_update_manager; // Add the handler
     std::unique_ptr<nlohmann::json> m_song_history;
     int m_unsaved_history_count;
 

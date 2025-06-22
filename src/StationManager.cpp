@@ -1,7 +1,8 @@
 #include "StationManager.h"
 #include "PersistenceManager.h"
 #include "Core/MpvEventHandler.h"
-#include "Core/MessageHandler.h" // Include the new header
+#include "Core/MessageHandler.h"
+#include "Core/UpdateManager.h" // Include the new header
 #include "SessionState.h"
 #include "Utils.h"
 #include <algorithm>
@@ -58,7 +59,8 @@ StationManager::StationManager(const StationData& station_data)
     }
 
     m_event_handler = std::make_unique<MpvEventHandler>(*this);
-    m_message_handler = std::make_unique<MessageHandler>(); // Initialize the handler
+    m_message_handler = std::make_unique<MessageHandler>();
+    m_update_manager = std::make_unique<UpdateManager>(); // Initialize the handler
     m_actor_thread = std::thread(&StationManager::actorLoop, this);
 }
 
@@ -186,35 +188,6 @@ void StationManager::actorLoop() {
     m_active_fades.clear();
 }
 
-// All handle_... methods have been moved to MessageHandler.cpp
-
-void StationManager::handle_cycle_status_timers() {
-    for(auto& station : m_stations) {
-        if(station.getCyclingState() == CyclingState::SUCCEEDED || station.getCyclingState() == CyclingState::FAILED) {
-            if(std::chrono::steady_clock::now() >= station.getCycleStatusEndTime()) {
-                station.clearCycleStatus();
-                m_needs_redraw = true;
-            }
-        }
-    }
-}
-
-void StationManager::handle_cycle_timeouts() {
-    // This constant is defined in MessageHandler.cpp, but we need it here.
-    constexpr int CYCLE_TIMEOUT_SECONDS = 8;
-    auto now = std::chrono::steady_clock::now();
-    for (auto& station : m_stations) {
-        if (station.getCyclingState() == CyclingState::CYCLING) {
-            if (auto start_time = station.getCycleStartTime()) {
-                if (std::chrono::duration_cast<std::chrono::seconds>(now - *start_time).count() >= CYCLE_TIMEOUT_SECONDS) {
-                    station.finalizeCycle(false);
-                    m_needs_redraw = true;
-                }
-            }
-        }
-    }
-}
-
 void StationManager::crossFadeToPending(int station_id) {
     if (station_id < 0 || station_id >= (int)m_stations.size()) return;
     fadeAudio(station_id, 0.0, CROSSFADE_TIME_MS, false);
@@ -267,57 +240,6 @@ void StationManager::fadeAudio(int station_id, double to_vol, int duration_ms, b
         .target_vol = to_vol, .start_time = std::chrono::steady_clock::now(),
         .duration_ms = duration_ms, .is_for_pending_instance = for_pending
     });
-}
-
-void StationManager::handle_activeFades() {
-    if (m_active_fades.empty()) return;
-    auto now = std::chrono::steady_clock::now();
-    bool changed = false;
-
-    m_active_fades.erase(std::remove_if(m_active_fades.begin(), m_active_fades.end(),
-        [&](ActiveFade& fade) -> bool {
-            if (fade.station_id < 0 || fade.station_id >= (int)m_stations.size()) {
-                return true;
-            }
-            RadioStream& station = m_stations[fade.station_id];
-            
-            if (station.getGeneration() != fade.generation) {
-                return true;
-            }
-
-            mpv_handle* handle = fade.is_for_pending_instance ? station.getPendingMpvInstance().get() : station.getMpvHandle();
-            if (!handle) {
-                return true;
-            }
-
-            auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - fade.start_time).count();
-            double progress = (fade.duration_ms > 0) ? std::min(1.0, static_cast<double>(elapsed_ms) / fade.duration_ms) : 1.0;
-            double new_vol = fade.start_vol + (fade.target_vol - fade.start_vol) * progress;
-            
-            if (!fade.is_for_pending_instance) {
-                station.setCurrentVolume(new_vol);
-            }
-            
-            double clamped_vol = std::max(0.0, std::min(100.0, new_vol));
-            mpv_set_property_async(handle, 0, "volume", MPV_FORMAT_DOUBLE, &clamped_vol);
-            changed = true;
-
-            if (progress >= 1.0) {
-                if (fade.is_for_pending_instance) {
-                    station.promotePendingMetadata();
-                    station.promotePendingToActive();
-                    station.setCurrentVolume(fade.target_vol);
-                    station.finalizeCycle(true);
-                } else if (station.getCyclingState() == CyclingState::SUCCEEDED) {
-                    station.getPendingMpvInstance().shutdown();
-                }
-                return true;
-            }
-            return false;
-        }),
-    m_active_fades.end());
-
-    if (changed) m_needs_redraw = true;
 }
 
 void StationManager::updateActiveWindow() {

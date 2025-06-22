@@ -1,9 +1,11 @@
 #include "Core/MessageHandler.h"
 #include "StationManager.h" // Include the full definition here
+#include "Core/UpdateManager.h" // Include the new header
 #include "RadioStream.h"
 #include "SessionState.h"
-#include "Utils.h" // <-- ADD THIS INCLUDE
+#include "Utils.h"
 #include <chrono>
+#include <algorithm> // For std::any_of
 
 // Constants can be moved here if they are only used by handlers
 namespace {
@@ -14,7 +16,6 @@ namespace {
     constexpr int AUTO_HOP_TOTAL_TIME_SECONDS = 1125;
     constexpr int FORGOTTEN_MUTE_SECONDS = 600;
     constexpr int PENDING_INSTANCE_ID_OFFSET = 10000;
-    constexpr int CYCLE_TIMEOUT_SECONDS = 8;
 }
 
 void MessageHandler::handle_navigate(StationManager& manager, NavDirection direction) {
@@ -85,9 +86,7 @@ void MessageHandler::handle_cycleUrl(StationManager& manager) {
 }
 
 void MessageHandler::handle_updateAndPoll(StationManager& manager) {
-    manager.handle_cycle_status_timers();
-    manager.handle_cycle_timeouts();
-    manager.handle_activeFades();
+    manager.m_update_manager->process_updates(manager);
     manager.pollMpvEvents();
 
     auto now = std::chrono::steady_clock::now();
