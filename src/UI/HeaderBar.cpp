@@ -7,11 +7,6 @@
 #include <iomanip>
 
 void HeaderBar::draw(double current_volume, HopperMode hopper_mode) {
-    time_t now = time(0);
-    tm* ltm = localtime(&now);
-    std::stringstream time_ss;
-    time_ss << std::put_time(ltm, "%H:%M");
-    
     std::string mode_str;
     switch(hopper_mode) {
         case HopperMode::BALANCED:
@@ -25,7 +20,7 @@ void HeaderBar::draw(double current_volume, HopperMode hopper_mode) {
             break;
     }
 
-    std::string full_header = " STREAM HOPPER  |  LIVE  |  " + mode_str + "  |  🔊 VOL: " + std::to_string((int)current_volume) + "%  |  🕐 " + time_ss.str() + " ";
+    std::string full_header = " STREAM HOPPER  |  LIVE  |  " + mode_str + "  |  🔊 VOL: " + std::to_string((int)current_volume) + "% ";
 
     attron(A_REVERSE);
     mvprintw(m_y, m_x, "%s", std::string(m_w, ' ').c_str());
