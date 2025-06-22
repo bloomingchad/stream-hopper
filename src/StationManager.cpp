@@ -2,7 +2,7 @@
 #include "PersistenceManager.h"
 #include "Core/MpvEventHandler.h"
 #include "Core/MessageHandler.h"
-#include "Core/UpdateManager.h" // Include the new header
+#include "Core/UpdateManager.h"
 #include "SessionState.h"
 #include "Utils.h"
 #include <algorithm>
@@ -60,7 +60,7 @@ StationManager::StationManager(const StationData& station_data)
 
     m_event_handler = std::make_unique<MpvEventHandler>(*this);
     m_message_handler = std::make_unique<MessageHandler>();
-    m_update_manager = std::make_unique<UpdateManager>(); // Initialize the handler
+    m_update_manager = std::make_unique<UpdateManager>();
     m_actor_thread = std::thread(&StationManager::actorLoop, this);
 }
 
@@ -160,22 +160,7 @@ void StationManager::actorLoop() {
             current_queue.push_back(Msg::UpdateAndPoll{});
         }
         for (auto& msg : current_queue) {
-            // Delegate message handling to the new MessageHandler class
-            std::visit([this](auto&& arg) {
-                using T = std::decay_t<decltype(arg)>;
-                if      constexpr (std::is_same_v<T, Msg::NavigateUp>)       m_message_handler->handle_navigate(*this, NavDirection::UP);
-                else if constexpr (std::is_same_v<T, Msg::NavigateDown>)     m_message_handler->handle_navigate(*this, NavDirection::DOWN);
-                else if constexpr (std::is_same_v<T, Msg::ToggleMute>)       m_message_handler->handle_toggleMute(*this);
-                else if constexpr (std::is_same_v<T, Msg::ToggleAutoHop>)    m_message_handler->handle_toggleAutoHop(*this);
-                else if constexpr (std::is_same_v<T, Msg::ToggleFavorite>)   m_message_handler->handle_toggleFavorite(*this);
-                else if constexpr (std::is_same_v<T, Msg::ToggleDucking>)    m_message_handler->handle_toggleDucking(*this);
-                else if constexpr (std::is_same_v<T, Msg::ToggleCopyMode>)   m_message_handler->handle_toggleCopyMode(*this);
-                else if constexpr (std::is_same_v<T, Msg::ToggleHopperMode>) m_message_handler->handle_toggleHopperMode(*this);
-                else if constexpr (std::is_same_v<T, Msg::SwitchPanel>)      m_message_handler->handle_switchPanel(*this);
-                else if constexpr (std::is_same_v<T, Msg::CycleUrl>)         m_message_handler->handle_cycleUrl(*this);
-                else if constexpr (std::is_same_v<T, Msg::UpdateAndPoll>)    m_message_handler->handle_updateAndPoll(*this);
-                else if constexpr (std::is_same_v<T, Msg::Quit>)            m_message_handler->handle_quit(*this);
-            }, msg);
+            m_message_handler->process_message(*this, msg);
              if (m_quit_flag) break;
         }
     }

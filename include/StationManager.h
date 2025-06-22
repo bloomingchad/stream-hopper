@@ -3,8 +3,8 @@
 
 #include "RadioStream.h"
 #include "Core/PreloadStrategy.h"
-#include "Core/MessageHandler.h"
-#include "Core/UpdateManager.h" // Include the new header
+#include "Core/MessageHandler.h" // Contains message definitions now
+#include "Core/UpdateManager.h" 
 #include "SessionState.h"
 #include "UI/StateSnapshot.h"
 #include "PersistenceManager.h"
@@ -22,26 +22,7 @@
 
 class MpvEventHandler;
 
-namespace Msg {
-    struct NavigateUp {};
-    struct NavigateDown {};
-    struct ToggleMute {};
-    struct ToggleAutoHop {};
-    struct ToggleFavorite {};
-    struct ToggleDucking {};
-    struct ToggleCopyMode {};
-    struct ToggleHopperMode {};
-    struct SwitchPanel {};
-    struct CycleUrl {};
-    struct UpdateAndPoll {}; 
-    struct Quit {};
-}
-
-using StationManagerMessage = std::variant<
-    Msg::NavigateUp, Msg::NavigateDown, Msg::ToggleMute, Msg::ToggleAutoHop,
-    Msg::ToggleFavorite, Msg::ToggleDucking, Msg::ToggleCopyMode,
-    Msg::ToggleHopperMode, Msg::SwitchPanel, Msg::CycleUrl, Msg::UpdateAndPoll, Msg::Quit
->;
+// Message definitions are now in MessageHandler.h
 
 /*!
 
@@ -121,7 +102,7 @@ public:
 private:
     friend class MpvEventHandler;
     friend class MessageHandler;
-    friend class UpdateManager; // Grant access to our new helper
+    friend class UpdateManager;
 
     // Methods that are NOT message handlers or update handlers remain here
     void actorLoop();
@@ -148,7 +129,7 @@ private:
     Strategy::Preloader m_preloader;
     std::unique_ptr<MpvEventHandler> m_event_handler;
     std::unique_ptr<MessageHandler> m_message_handler;
-    std::unique_ptr<UpdateManager> m_update_manager; // Add the handler
+    std::unique_ptr<UpdateManager> m_update_manager;
     std::unique_ptr<nlohmann::json> m_song_history;
     int m_unsaved_history_count;
 

@@ -1,11 +1,12 @@
 #include "Core/MessageHandler.h"
-#include "StationManager.h" // Include the full definition here
-#include "Core/UpdateManager.h" // Include the new header
+#include "StationManager.h" 
+#include "Core/UpdateManager.h"
 #include "RadioStream.h"
 #include "SessionState.h"
 #include "Utils.h"
 #include <chrono>
-#include <algorithm> // For std::any_of
+#include <algorithm>
+#include <variant> // Required for std::visit
 
 // Constants can be moved here if they are only used by handlers
 namespace {
@@ -16,6 +17,24 @@ namespace {
     constexpr int AUTO_HOP_TOTAL_TIME_SECONDS = 1125;
     constexpr int FORGOTTEN_MUTE_SECONDS = 600;
     constexpr int PENDING_INSTANCE_ID_OFFSET = 10000;
+}
+
+void MessageHandler::process_message(StationManager& manager, const StationManagerMessage& msg) {
+    std::visit([this, &manager](auto&& arg) {
+        using T = std::decay_t<decltype(arg)>;
+        if      constexpr (std::is_same_v<T, Msg::NavigateUp>)       handle_navigate(manager, NavDirection::UP);
+        else if constexpr (std::is_same_v<T, Msg::NavigateDown>)     handle_navigate(manager, NavDirection::DOWN);
+        else if constexpr (std::is_same_v<T, Msg::ToggleMute>)       handle_toggleMute(manager);
+        else if constexpr (std::is_same_v<T, Msg::ToggleAutoHop>)    handle_toggleAutoHop(manager);
+        else if constexpr (std::is_same_v<T, Msg::ToggleFavorite>)   handle_toggleFavorite(manager);
+        else if constexpr (std::is_same_v<T, Msg::ToggleDucking>)    handle_toggleDucking(manager);
+        else if constexpr (std::is_same_v<T, Msg::ToggleCopyMode>)   handle_toggleCopyMode(manager);
+        else if constexpr (std::is_same_v<T, Msg::ToggleHopperMode>) handle_toggleHopperMode(manager);
+        else if constexpr (std::is_same_v<T, Msg::SwitchPanel>)      handle_switchPanel(manager);
+        else if constexpr (std::is_same_v<T, Msg::CycleUrl>)         handle_cycleUrl(manager);
+        else if constexpr (std::is_same_v<T, Msg::UpdateAndPoll>)    handle_updateAndPoll(manager);
+        else if constexpr (std::is_same_v<T, Msg::Quit>)            handle_quit(manager);
+    }, msg);
 }
 
 void MessageHandler::handle_navigate(StationManager& manager, NavDirection direction) {
