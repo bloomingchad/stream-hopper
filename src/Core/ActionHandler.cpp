@@ -55,8 +55,7 @@ void ActionHandler::handle_searchOnline(StationManager& manager, char key) {
     }
 }
 
-
-void ActionHandler::handle_navigate(StationManager& manager, NavDirection direction) {
+void ActionHandler::handle_navigateStations(StationManager& manager, NavDirection direction) {
     if (manager.m_session_state.active_station_idx >= 0 && manager.m_session_state.active_station_idx < (int)manager.m_stations.size()) {
         auto& current_station_obj = manager.m_stations[manager.m_session_state.active_station_idx];
         if (current_station_obj.getCyclingState() != CyclingState::IDLE) {
@@ -64,40 +63,48 @@ void ActionHandler::handle_navigate(StationManager& manager, NavDirection direct
         }
     }
 
+    if (manager.m_stations.empty()) return;
+    int station_count = manager.m_stations.size();
+    int old_idx = manager.m_session_state.active_station_idx;
+    int new_idx = (direction == NavDirection::DOWN) ? (old_idx + 1) % station_count : (old_idx - 1 + station_count) % station_count;
+    if (new_idx != old_idx) {
+        RadioStream& current_station = manager.m_stations[old_idx];
+        if (current_station.isInitialized() && current_station.getPlaybackState() != PlaybackState::Muted) {
+            manager.fadeAudio(old_idx, 0.0, FADE_TIME_MS, false);
+        }
+        manager.m_session_state.session_switches++;
+        manager.m_session_state.last_switch_time = std::chrono::steady_clock::now();
+    }
+    manager.m_session_state.active_station_idx = new_idx;
+    manager.m_session_state.nav_history.push_back({direction, std::chrono::steady_clock::now()});
+    if (manager.m_session_state.nav_history.size() > manager.MAX_NAV_HISTORY) {
+        manager.m_session_state.nav_history.pop_front();
+    }
+    manager.updateActiveWindow();
+    manager.m_session_state.history_scroll_offset = 0;
+}
+
+void ActionHandler::handle_navigateHistory(StationManager& manager, NavDirection direction) {
+    size_t history_size = 0;
+    if (!manager.m_stations.empty()) {
+        const auto& name = manager.m_stations[manager.m_session_state.active_station_idx].getName();
+        if (manager.m_song_history->contains(name)) {
+            history_size = (*manager.m_song_history)[name].size();
+        }
+    }
+    if (direction == NavDirection::UP) {
+        if (manager.m_session_state.history_scroll_offset > 0) manager.m_session_state.history_scroll_offset--;
+    } else {
+        if (history_size > 0 && manager.m_session_state.history_scroll_offset < (int)history_size - 1) manager.m_session_state.history_scroll_offset++;
+    }
+}
+
+void ActionHandler::handle_navigate(StationManager& manager, NavDirection direction) {
     if (manager.m_session_state.hopper_mode == HopperMode::FOCUS) manager.m_session_state.hopper_mode = HopperMode::BALANCED;
     if (manager.m_session_state.active_panel == ActivePanel::STATIONS) {
-        if (manager.m_stations.empty()) return;
-        int station_count = manager.m_stations.size();
-        int old_idx = manager.m_session_state.active_station_idx;
-        int new_idx = (direction == NavDirection::DOWN) ? (old_idx + 1) % station_count : (old_idx - 1 + station_count) % station_count;
-        if (new_idx != old_idx) {
-            RadioStream& current_station = manager.m_stations[old_idx];
-            if (current_station.isInitialized() && current_station.getPlaybackState() != PlaybackState::Muted) {
-                manager.fadeAudio(old_idx, 0.0, FADE_TIME_MS, false);
-            }
-            manager.m_session_state.session_switches++;
-            manager.m_session_state.last_switch_time = std::chrono::steady_clock::now();
-        }
-        manager.m_session_state.active_station_idx = new_idx;
-        manager.m_session_state.nav_history.push_back({direction, std::chrono::steady_clock::now()});
-        if (manager.m_session_state.nav_history.size() > manager.MAX_NAV_HISTORY) {
-            manager.m_session_state.nav_history.pop_front();
-        }
-        manager.updateActiveWindow();
-        manager.m_session_state.history_scroll_offset = 0;
+        handle_navigateStations(manager, direction);
     } else {
-        size_t history_size = 0;
-        if (!manager.m_stations.empty()) {
-            const auto& name = manager.m_stations[manager.m_session_state.active_station_idx].getName();
-            if (manager.m_song_history->contains(name)) {
-                history_size = (*manager.m_song_history)[name].size();
-            }
-        }
-        if (direction == NavDirection::UP) {
-            if (manager.m_session_state.history_scroll_offset > 0) manager.m_session_state.history_scroll_offset--;
-        } else {
-            if (history_size > 0 && manager.m_session_state.history_scroll_offset < (int)history_size - 1) manager.m_session_state.history_scroll_offset++;
-        }
+        handle_navigateHistory(manager, direction);
     }
     manager.m_needs_redraw = true;
 }

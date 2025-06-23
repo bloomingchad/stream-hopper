@@ -12,6 +12,8 @@ public:
     void process_action(StationManager& manager, const StationManagerMessage& msg);
 
 private:
+    void handle_navigateStations(StationManager& manager, NavDirection direction);
+    void handle_navigateHistory(StationManager& manager, NavDirection direction);
     void handle_navigate(StationManager& manager, NavDirection direction);
     void handle_toggleMute(StationManager& manager);
     void handle_toggleAutoHop(StationManager& manager);
