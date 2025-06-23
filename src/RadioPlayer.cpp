@@ -6,6 +6,7 @@
 #include <ncurses.h>
 #include <iostream>
 #include <thread>
+#include <cctype> // for tolower
 
 namespace {
     constexpr auto ACTOR_POLL_INTERVAL = std::chrono::milliseconds(100);
@@ -20,13 +21,10 @@ RadioPlayer::RadioPlayer(StationManager& manager)
         {KEY_UP,       Msg::NavigateUp{}}, {KEY_DOWN,     Msg::NavigateDown{}},
         {KEY_ENTER,    Msg::ToggleMute{}}, {'\n',         Msg::ToggleMute{}},
         {'\r',         Msg::ToggleMute{}}, {'a',          Msg::ToggleAutoHop{}},
-        {'A',          Msg::ToggleAutoHop{}}, {'f',          Msg::ToggleFavorite{}},
-        {'F',          Msg::ToggleFavorite{}}, {'d',          Msg::ToggleDucking{}},
-        {'D',          Msg::ToggleDucking{}}, {'c',          Msg::ToggleCopyMode{}},
-        {'C',          Msg::ToggleCopyMode{}}, {'p',          Msg::ToggleHopperMode{}},
-        {'P',          Msg::ToggleHopperMode{}}, {'q',          Msg::Quit{}},
-        {'Q',          Msg::Quit{}}, {'\t',         Msg::SwitchPanel{}},
-        {'+',          Msg::CycleUrl{}}, // New keybinding
+        {'f',          Msg::ToggleFavorite{}}, {'d',          Msg::ToggleDucking{}},
+        {'c',          Msg::ToggleCopyMode{}}, {'p',          Msg::ToggleHopperMode{}},
+        {'q',          Msg::Quit{}}, {'\t',         Msg::SwitchPanel{}},
+        {'+',          Msg::CycleUrl{}},
     };
 }
 
@@ -52,9 +50,21 @@ void RadioPlayer::run() {
             
             auto snapshot = m_station_manager.createSnapshot();
             if (snapshot.is_copy_mode_active) {
+                // Pass the character directly if it's a letter.
+                if (isalpha(ch)) {
+                    m_station_manager.post(Msg::SearchOnline{ (char)tolower(ch) });
+                }
+                // Always exit the mode after a key press
                 m_station_manager.post(Msg::ToggleCopyMode{});
-            } else if (m_input_handlers.count(ch)) {
-                m_station_manager.post(m_input_handlers.at(ch));
+
+            } else {
+                // Handle case-insensitivity for normal mode keys
+                int lower_ch = tolower(ch);
+                if (m_input_handlers.count(lower_ch)) {
+                     m_station_manager.post(m_input_handlers.at(lower_ch));
+                } else if (m_input_handlers.count(ch)) { // For non-alpha keys like KEY_UP
+                     m_station_manager.post(m_input_handlers.at(ch));
+                }
             }
         } else {
             auto now = std::chrono::steady_clock::now();

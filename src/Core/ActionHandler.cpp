@@ -25,8 +25,36 @@ void ActionHandler::process_action(StationManager& manager, const StationManager
         else if constexpr (std::is_same_v<T, Msg::ToggleHopperMode>) handle_toggleHopperMode(manager);
         else if constexpr (std::is_same_v<T, Msg::SwitchPanel>)      handle_switchPanel(manager);
         else if constexpr (std::is_same_v<T, Msg::CycleUrl>)         handle_cycleUrl(manager);
+        else if constexpr (std::is_same_v<T, Msg::SearchOnline>)     handle_searchOnline(manager, arg.key);
     }, msg);
 }
+
+void ActionHandler::handle_searchOnline(StationManager& manager, char key) {
+    if (manager.m_search_providers.find(key) == manager.m_search_providers.end()) {
+        return; // Key not found in config
+    }
+    const auto& provider = manager.m_search_providers.at(key);
+
+    if (manager.m_stations.empty() || manager.m_session_state.active_station_idx < 0) return;
+
+    const auto& station = manager.m_stations[manager.m_session_state.active_station_idx];
+    std::string title = station.getCurrentTitle();
+
+    if (title.empty() || title == "..." || title == "Initializing..." || title == "Buffering..." || title.find("Stream Error") != std::string::npos) {
+        return;
+    }
+
+    std::string full_url = provider.base_url + url_encode(title, provider.encoding_style);
+    std::string error_message;
+    if (!execute_open_command(full_url, error_message)) {
+        manager.m_session_state.temporary_status_message = error_message;
+        manager.m_session_state.temporary_message_end_time = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+        manager.m_needs_redraw = true;
+    } else {
+        manager.m_session_state.songs_copied++;
+    }
+}
+
 
 void ActionHandler::handle_navigate(StationManager& manager, NavDirection direction) {
     if (manager.m_session_state.active_station_idx >= 0 && manager.m_session_state.active_station_idx < (int)manager.m_stations.size()) {

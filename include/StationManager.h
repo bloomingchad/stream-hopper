@@ -3,7 +3,7 @@
 
 #include "RadioStream.h"
 #include "Core/PreloadStrategy.h"
-#include "Core/Message.h" // Include the new message header
+#include "Core/Message.h"
 #include "Core/UpdateManager.h" 
 #include "SessionState.h"
 #include "UI/StateSnapshot.h"
@@ -18,11 +18,20 @@
 #include <deque>
 #include <variant>
 #include <unordered_set>
+#include <map>
 #include "nlohmann/json.hpp"
 
 class MpvEventHandler;
 class ActionHandler;
 class SystemHandler;
+
+// New struct to hold search provider config
+struct SearchProvider {
+    std::string name;
+    char key;
+    std::string base_url;
+    std::string encoding_style;
+};
 
 /*!
 
@@ -114,6 +123,7 @@ private:
     void shutdownStation(int station_idx);
     void saveHistoryToDisk();
     void addHistoryEntry(const std::string& station_name, const nlohmann::json& entry);
+    void loadSearchProviders(); // New method to load config
 
     struct ActiveFade {
         int station_id; int generation; double start_vol; double target_vol;
@@ -133,6 +143,7 @@ private:
     std::unique_ptr<UpdateManager> m_update_manager;
     std::unique_ptr<nlohmann::json> m_song_history;
     int m_unsaved_history_count;
+    std::map<char, SearchProvider> m_search_providers; // Store config here
 
     // Encapsulated Application State
     SessionState m_session_state;

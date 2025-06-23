@@ -4,6 +4,8 @@
 #include "AppState.h"
 #include <chrono>
 #include <deque>
+#include <string>
+#include <optional>
 
 /**
  * @class SessionState
@@ -35,6 +37,10 @@ struct SessionState {
     int new_songs_found = 0;
     int songs_copied = 0;
     bool was_quit_by_mute_timeout = false;
+
+    // Temporary UI Feedback State
+    std::string temporary_status_message;
+    std::optional<std::chrono::steady_clock::time_point> temporary_message_end_time;
 
     SessionState() : last_switch_time(std::chrono::steady_clock::now()),
                      session_start_time(std::chrono::steady_clock::now()) {}

@@ -21,6 +21,7 @@ private:
     void handle_toggleHopperMode(StationManager& manager);
     void handle_switchPanel(StationManager& manager);
     void handle_cycleUrl(StationManager& manager);
+    void handle_searchOnline(StationManager& manager, char key);
 };
 
 #endif // ACTIONHANDLER_H

@@ -1,0 +1,54 @@
+// Configuration for the "Search Online" feature.
+//
+// "name": Display name (currently not used in UI, but good for clarity).
+// "key": The single character key to activate this search.
+// "base_url": The search URL prefix. The encoded song title will be appended.
+// "encoding_style": Defines how the song title should be URL-encoded.
+//   - "query_plus": For ?q= style URLs where spaces become '+'. (e.g., YouTube, Web)
+//   - "path_percent": For /search/ style URLs where spaces become '%20'. (e.g., Spotify, Apple, Deezer)
+//   - "bandcamp_special": A unique style for Bandcamp where spaces, hyphens, and periods all become '+'.
+//
+[
+  {
+    "name": "YouTube Music",
+    "key": "y",
+    "base_url": "https://music.youtube.com/search?q=",
+    "encoding_style": "query_plus"
+  },
+  {
+    "name": "Spotify",
+    "key": "s",
+    "base_url": "https://open.spotify.com/search/",
+    "encoding_style": "path_percent"
+  },
+  {
+    "name": "Apple Music",
+    "key": "a",
+    "base_url": "https://music.apple.com/us/search?term=",
+    "encoding_style": "path_percent"
+  },
+  {
+    "name": "SoundCloud",
+    "key": "c",
+    "base_url": "https://soundcloud.com/search?q=",
+    "encoding_style": "path_percent" // Safest bet, %20 is universally understood
+  },
+  {
+    "name": "Deezer",
+    "key": "d",
+    "base_url": "https://www.deezer.com/search/",
+    "encoding_style": "path_percent"
+  },
+  {
+    "name": "Bandcamp",
+    "key": "b",
+    "base_url": "https://bandcamp.com/search?q=",
+    "encoding_style": "bandcamp_special"
+  },
+  {
+    "name": "Web (DuckDuckGo)",
+    "key": "w",
+    "base_url": "https://duckduckgo.com/?q=",
+    "encoding_style": "query_plus"
+  }
+]

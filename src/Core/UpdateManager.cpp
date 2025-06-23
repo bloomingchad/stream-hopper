@@ -10,9 +10,20 @@ namespace {
 }
 
 void UpdateManager::process_updates(StationManager& manager) {
+    handle_temporary_message_timer(manager);
     handle_cycle_status_timers(manager);
     handle_cycle_timeouts(manager);
     handle_activeFades(manager);
+}
+
+void UpdateManager::handle_temporary_message_timer(StationManager& manager) {
+    if (auto end_time = manager.m_session_state.temporary_message_end_time) {
+        if (std::chrono::steady_clock::now() >= *end_time) {
+            manager.m_session_state.temporary_status_message.clear();
+            manager.m_session_state.temporary_message_end_time = std::nullopt;
+            manager.m_needs_redraw = true;
+        }
+    }
 }
 
 void UpdateManager::handle_cycle_status_timers(StationManager& manager) {

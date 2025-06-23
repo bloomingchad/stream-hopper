@@ -19,7 +19,7 @@ struct StationDisplayData {
     bool is_buffering;
     PlaybackState playback_state;
     CyclingState cycling_state;
-    std::string pending_title; // <-- ADD THIS FIELD
+    std::string pending_title;
     int pending_bitrate; // For displaying during URL cycle
     size_t url_count;
 };
@@ -37,6 +37,7 @@ struct StateSnapshot {
     nlohmann::json active_station_history;
     int auto_hop_remaining_seconds;
     int auto_hop_total_duration;
+    std::string temporary_status_message; // New field for UI feedback
 };
 
 #endif // STATESNAPSHOT_H

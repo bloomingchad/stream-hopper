@@ -14,11 +14,41 @@
 #include <ctime>
 #include <cmath>
 #include <mpv/client.h>
+#include <fstream>
 
 namespace {
     constexpr auto ACTOR_LOOP_TIMEOUT = std::chrono::milliseconds(20);
     constexpr int CROSSFADE_TIME_MS = 1200;
+    const std::string SEARCH_PROVIDERS_FILENAME = "search_providers.jsonc";
 }
+
+void StationManager::loadSearchProviders() {
+    std::ifstream i(SEARCH_PROVIDERS_FILENAME);
+    if (!i.is_open()) {
+        // Log an error but don't crash, the feature will just be disabled
+        std::cerr << "Warning: Could not open " << SEARCH_PROVIDERS_FILENAME << ". Search feature will be disabled." << std::endl;
+        return;
+    }
+    
+    try {
+        nlohmann::json providers_json = nlohmann::json::parse(i, nullptr, true, true);
+        for (const auto& entry : providers_json) {
+            std::string key_str = entry.at("key").get<std::string>();
+            if (key_str.length() == 1) {
+                SearchProvider p = {
+                    .name = entry.at("name").get<std::string>(),
+                    .key = key_str[0],
+                    .base_url = entry.at("base_url").get<std::string>(),
+                    .encoding_style = entry.at("encoding_style").get<std::string>()
+                };
+                m_search_providers[p.key] = p;
+            }
+        }
+    } catch (const nlohmann::json::exception& e) {
+        std::cerr << "Warning: Failed to parse " << SEARCH_PROVIDERS_FILENAME << ": " << e.what() << ". Search feature may be incomplete." << std::endl;
+    }
+}
+
 
 StationManager::StationManager(const StationData& station_data)
     : m_unsaved_history_count(0),
@@ -30,6 +60,8 @@ StationManager::StationManager(const StationData& station_data)
         throw std::runtime_error("No radio stations provided.");
     }
     
+    loadSearchProviders(); // Load the new config
+
     for (size_t i = 0; i < station_data.size(); ++i) {
         m_stations.emplace_back(i, station_data[i].first, station_data[i].second);
     }
@@ -83,7 +115,7 @@ StationManager::~StationManager() {
         auto end_time = std::chrono::steady_clock::now();
         auto duration_seconds = std::chrono::duration_cast<std::chrono::seconds>(end_time - m_session_state.session_start_time).count();
         long duration_minutes = duration_seconds / 60;
-        std::cout << "---\n" << "Thank you for using Stream Hopper!\n" << "🎛️ Session Switches: " << m_session_state.session_switches << "\n" << "✨ New Songs Found: " << m_session_state.new_songs_found << "\n" << "📋 Songs Copied: " << m_session_state.songs_copied << "\n" << "🕐 Total Time: " << duration_minutes << " minutes\n" << "---" << std::endl;
+        std::cout << "---\n" << "Thank you for using Stream Hopper!\n" << "🎛️ Session Switches: " << m_session_state.session_switches << "\n" << "✨ New Songs Found: " << m_session_state.new_songs_found << "\n" << "📋 Songs Searched: " << m_session_state.songs_copied << "\n" << "🕐 Total Time: " << duration_minutes << " minutes\n" << "---" << std::endl;
     }
 }
 
@@ -96,6 +128,7 @@ StateSnapshot StationManager::createSnapshot() const {
     snapshot.is_auto_hop_mode_active = m_session_state.auto_hop_mode_active;
     snapshot.history_scroll_offset = m_session_state.history_scroll_offset;
     snapshot.hopper_mode = m_session_state.hopper_mode;
+    snapshot.temporary_status_message = m_session_state.temporary_status_message;
     snapshot.stations.reserve(m_stations.size());
     for (const auto& station : m_stations) {
         snapshot.stations.push_back({

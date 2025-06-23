@@ -57,7 +57,7 @@ void UIManager::draw(const StateSnapshot& snapshot) {
         can_cycle_url = snapshot.stations[snapshot.active_station_idx].url_count > 1;
     }
     
-    m_footer_bar->draw(m_is_compact_mode, snapshot.is_copy_mode_active, snapshot.is_auto_hop_mode_active, can_cycle_url);
+    m_footer_bar->draw(m_is_compact_mode, snapshot.is_copy_mode_active, snapshot.is_auto_hop_mode_active, can_cycle_url, snapshot.temporary_status_message);
 
     if (snapshot.stations.empty()) {
         refresh();
@@ -66,7 +66,6 @@ void UIManager::draw(const StateSnapshot& snapshot) {
     const StationDisplayData& current_station = snapshot.stations[snapshot.active_station_idx];
     m_stations_panel->draw(snapshot.stations, snapshot.active_station_idx, snapshot.active_panel == ActivePanel::STATIONS && !snapshot.is_copy_mode_active);
     
-    // FIX: The call is now simpler as NowPlayingPanel gets the full snapshot.
     m_now_playing_panel->draw(snapshot);
     
     m_history_panel->draw(current_station, snapshot.active_station_history, snapshot.history_scroll_offset, snapshot.active_panel == ActivePanel::HISTORY && !snapshot.is_copy_mode_active);
