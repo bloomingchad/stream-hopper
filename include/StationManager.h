@@ -8,6 +8,7 @@
 #include "SessionState.h"
 #include "UI/StateSnapshot.h"
 #include "PersistenceManager.h"
+#include "Utils.h" // Include for UrlEncodingStyle
 #include <string>
 #include <vector>
 #include <thread>
@@ -30,7 +31,7 @@ struct SearchProvider {
     std::string name;
     char key;
     std::string base_url;
-    std::string encoding_style;
+    UrlEncodingStyle encoding_style;
 };
 
 /*!

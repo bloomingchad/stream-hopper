@@ -12,22 +12,22 @@ void check_mpv_error(int status, const std::string& context) {
     }
 }
 
-// Updated to use string-based style names from the JSON config
-std::string url_encode(const std::string& value, const std::string& encoding_style) {
+// Updated to use the UrlEncodingStyle enum
+std::string url_encode(const std::string& value, UrlEncodingStyle encoding_style) {
     std::ostringstream escaped;
     escaped.fill('0');
     escaped << std::hex;
 
     for (char c : value) {
-        if (encoding_style == "bandcamp_special") {
+        if (encoding_style == UrlEncodingStyle::BANDCAMP_SPECIAL) {
             if (c == ' ' || c == '-' || c == '.') {
                 escaped << '+';
                 continue;
             }
         }
 
-        if (isalnum(c) || c == '_' || c == '~' || (encoding_style != "bandcamp_special" && c == '.')) {
-             if (encoding_style == "bandcamp_special" && c == '-') { // already handled above but defensive
+        if (isalnum(c) || c == '_' || c == '~' || (encoding_style != UrlEncodingStyle::BANDCAMP_SPECIAL && c == '.')) {
+             if (encoding_style == UrlEncodingStyle::BANDCAMP_SPECIAL && c == '-') { // already handled above but defensive
                 escaped << '+';
              } else {
                 escaped << c;
@@ -36,9 +36,9 @@ std::string url_encode(const std::string& value, const std::string& encoding_sty
         }
 
         if (c == ' ') {
-            if (encoding_style == "query_plus") {
+            if (encoding_style == UrlEncodingStyle::QUERY_PLUS) {
                 escaped << '+';
-            } else { // "path_percent"
+            } else { // PATH_PERCENT
                 escaped << "%20";
             }
             continue;

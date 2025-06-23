@@ -35,11 +35,18 @@ void StationManager::loadSearchProviders() {
         for (const auto& entry : providers_json) {
             std::string key_str = entry.at("key").get<std::string>();
             if (key_str.length() == 1) {
+                
+                UrlEncodingStyle style = UrlEncodingStyle::UNKNOWN;
+                std::string style_str = entry.at("encoding_style").get<std::string>();
+                if (style_str == "query_plus") style = UrlEncodingStyle::QUERY_PLUS;
+                else if (style_str == "path_percent") style = UrlEncodingStyle::PATH_PERCENT;
+                else if (style_str == "bandcamp_special") style = UrlEncodingStyle::BANDCAMP_SPECIAL;
+
                 SearchProvider p = {
                     .name = entry.at("name").get<std::string>(),
                     .key = key_str[0],
                     .base_url = entry.at("base_url").get<std::string>(),
-                    .encoding_style = entry.at("encoding_style").get<std::string>()
+                    .encoding_style = style
                 };
                 m_search_providers[p.key] = p;
             }
