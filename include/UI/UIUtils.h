@@ -1,8 +1,9 @@
 #ifndef UIUTILS_H
 #define UIUTILS_H
 
-#include <string>
 #include <ncurses.h>
+
+#include <string>
 
 std::string truncate_string(const std::string& str, size_t width);
 std::string format_history_timestamp(const std::string& ts_str);

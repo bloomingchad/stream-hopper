@@ -2,22 +2,23 @@
 #define MPVEVENTHANDLER_H
 
 #include <mpv/client.h>
+
+#include <functional>
 #include <string>
 #include <vector>
-#include <functional>
 
 // Forward declarations
 class RadioStream;
 class StationManager; // The new owner of everything
 
 class MpvEventHandler {
-public:
+  public:
     // The handler now only needs a reference to its owner, the StationManager
     explicit MpvEventHandler(StationManager& manager);
 
     void handleEvent(mpv_event* event);
 
-private:
+  private:
     void handlePropertyChange(mpv_event* event);
     void onTitleProperty(mpv_event_property* prop, RadioStream& station);
     void onBitrateProperty(mpv_event_property* prop, RadioStream& station);

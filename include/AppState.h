@@ -7,7 +7,10 @@
 // This header is now just for shared, simple type definitions (enums)
 // to avoid circular dependencies between the components that use them.
 
-enum class NavDirection { UP, DOWN };
+enum class NavDirection {
+    UP,
+    DOWN
+};
 
 struct NavEvent {
     NavDirection direction;
@@ -20,6 +23,9 @@ enum class HopperMode {
     FOCUS
 };
 
-enum class ActivePanel { STATIONS, HISTORY };
+enum class ActivePanel {
+    STATIONS,
+    HISTORY
+};
 
 #endif // APPSTATE_H

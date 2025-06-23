@@ -1,22 +1,24 @@
 #include "Core/MpvEventHandler.h"
-#include "StationManager.h"
-#include "RadioStream.h"
-#include "Utils.h"
-#include "UI/UIUtils.h"
+
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <ctime>
 #include <iomanip>
 #include <sstream>
-#include <cmath>
-#include <algorithm>
+
+#include "RadioStream.h"
+#include "StationManager.h"
+#include "UI/UIUtils.h"
+#include "Utils.h"
 #include "nlohmann/json.hpp"
 
 namespace {
-    static constexpr char* PROP_MEDIA_TITLE = (char*)"media-title";
-    static constexpr char* PROP_AUDIO_BITRATE = (char*)"audio-bitrate";
-    static constexpr char* PROP_EOF_REACHED = (char*)"eof-reached";
-    static constexpr char* PROP_CORE_IDLE = (char*)"core-idle";
-    static constexpr char* PROP_DEMUXER_STATE = (char*)"demuxer-cache-state";
+    static constexpr char* PROP_MEDIA_TITLE = (char*) "media-title";
+    static constexpr char* PROP_AUDIO_BITRATE = (char*) "audio-bitrate";
+    static constexpr char* PROP_EOF_REACHED = (char*) "eof-reached";
+    static constexpr char* PROP_CORE_IDLE = (char*) "core-idle";
+    static constexpr char* PROP_DEMUXER_STATE = (char*) "demuxer-cache-state";
     constexpr int BITRATE_REDRAW_THRESHOLD = 2;
     constexpr int PENDING_INSTANCE_ID_OFFSET = 10000;
 }
@@ -28,7 +30,7 @@ void MpvEventHandler::handleEvent(mpv_event* event) {
     } else if (event->event_id == MPV_EVENT_END_FILE) {
         if (event->reply_userdata >= PENDING_INSTANCE_ID_OFFSET) {
             int station_id = event->reply_userdata - PENDING_INSTANCE_ID_OFFSET;
-            if (station_id < (int)m_manager.m_stations.size()) { // The 'station_id >= 0' check is redundant
+            if (station_id < (int) m_manager.m_stations.size()) { // The 'station_id >= 0' check is redundant
                 auto& station = m_manager.m_stations[station_id];
                 if (station.getCyclingState() == CyclingState::CYCLING) {
                     station.finalizeCycle(false);
@@ -41,10 +43,11 @@ void MpvEventHandler::handleEvent(mpv_event* event) {
 
 void MpvEventHandler::handlePropertyChange(mpv_event* event) {
     mpv_event_property* prop = reinterpret_cast<mpv_event_property*>(event->data);
-    
+
     if (event->reply_userdata >= PENDING_INSTANCE_ID_OFFSET) {
         int station_id = event->reply_userdata - PENDING_INSTANCE_ID_OFFSET;
-        if (station_id >= (int)m_manager.m_stations.size()) return; // The 'station_id < 0' check is redundant
+        if (station_id >= (int) m_manager.m_stations.size())
+            return; // The 'station_id < 0' check is redundant
         auto& station = m_manager.m_stations[station_id];
 
         if (station.getCyclingState() != CyclingState::CYCLING) {
@@ -68,13 +71,13 @@ void MpvEventHandler::handlePropertyChange(mpv_event* event) {
                 }
             }
         }
-        
+
         if (property_changed) {
             m_manager.getNeedsRedrawFlag() = true;
-            
+
             if (station.getPendingBitrate() > 0) {
-                 m_manager.crossFadeToPending(station_id);
-                 mpv_unobserve_property(station.getPendingMpvInstance().get(), station_id + PENDING_INSTANCE_ID_OFFSET);
+                m_manager.crossFadeToPending(station_id);
+                mpv_unobserve_property(station.getPendingMpvInstance().get(), station_id + PENDING_INSTANCE_ID_OFFSET);
             }
         }
         return;
@@ -82,20 +85,29 @@ void MpvEventHandler::handlePropertyChange(mpv_event* event) {
 
     // Otherwise, handle as a normal event for a main instance
     RadioStream* station = findStationById(event->reply_userdata);
-    if (!station || !station->isInitialized()) return;
-    
-    if (strcmp(prop->name, PROP_MEDIA_TITLE) == 0) onTitleProperty(prop, *station);
-    else if (strcmp(prop->name, PROP_AUDIO_BITRATE) == 0) onBitrateProperty(prop, *station);
-    else if (strcmp(prop->name, PROP_EOF_REACHED) == 0) onEofProperty(prop, *station);
-    else if (strcmp(prop->name, PROP_CORE_IDLE) == 0) onCoreIdleProperty(prop, *station);
+    if (!station || !station->isInitialized())
+        return;
+
+    if (strcmp(prop->name, PROP_MEDIA_TITLE) == 0)
+        onTitleProperty(prop, *station);
+    else if (strcmp(prop->name, PROP_AUDIO_BITRATE) == 0)
+        onBitrateProperty(prop, *station);
+    else if (strcmp(prop->name, PROP_EOF_REACHED) == 0)
+        onEofProperty(prop, *station);
+    else if (strcmp(prop->name, PROP_CORE_IDLE) == 0)
+        onCoreIdleProperty(prop, *station);
 }
 
 void MpvEventHandler::onTitleChanged(RadioStream& station, const std::string& new_title) {
-    if (station.getCyclingState() == CyclingState::CYCLING) return;
-    
-    if (new_title.empty() || new_title == station.getCurrentTitle() || new_title == "N/A" || new_title == "Initializing...") return;
+    if (station.getCyclingState() == CyclingState::CYCLING)
+        return;
+
+    if (new_title.empty() || new_title == station.getCurrentTitle() || new_title == "N/A" ||
+        new_title == "Initializing...")
+        return;
     if (contains_ci(station.getActiveUrl(), new_title) || contains_ci(station.getName(), new_title)) {
-        if (new_title != station.getCurrentTitle()) station.setCurrentTitle(new_title);
+        if (new_title != station.getCurrentTitle())
+            station.setCurrentTitle(new_title);
         return;
     }
     std::string title_to_log = new_title;
@@ -108,7 +120,7 @@ void MpvEventHandler::onTitleChanged(RadioStream& station, const std::string& ne
     std::tm now_tm = *std::localtime(&now_c);
     std::stringstream time_ss;
     time_ss << std::put_time(&now_tm, "%Y-%m-%d %H:%M:%S");
-    nlohmann::json history_entry_for_file = { time_ss.str(), title_to_log };
+    nlohmann::json history_entry_for_file = {time_ss.str(), title_to_log};
     m_manager.addHistoryEntry(station.getName(), history_entry_for_file);
     station.setCurrentTitle(new_title);
     m_manager.getNeedsRedrawFlag() = true;
@@ -135,7 +147,8 @@ void MpvEventHandler::onBitrateProperty(mpv_event_property* prop, RadioStream& s
         int old_bitrate = station.getBitrate();
         int new_bitrate = static_cast<int>(*reinterpret_cast<int64_t*>(prop->data) / 1000);
         station.setBitrate(new_bitrate);
-        if (station.getID() == m_manager.m_session_state.active_station_idx && std::abs(new_bitrate - old_bitrate) > BITRATE_REDRAW_THRESHOLD) {
+        if (station.getID() == m_manager.m_session_state.active_station_idx &&
+            std::abs(new_bitrate - old_bitrate) > BITRATE_REDRAW_THRESHOLD) {
             m_manager.getNeedsRedrawFlag() = true;
         }
     }
@@ -159,6 +172,7 @@ void MpvEventHandler::onCoreIdleProperty(mpv_event_property* prop, RadioStream& 
 
 RadioStream* MpvEventHandler::findStationById(int station_id) {
     auto& stations = m_manager.m_stations;
-    auto it = std::find_if(stations.begin(), stations.end(), [station_id](const RadioStream& s) { return s.getID() == station_id; });
+    auto it = std::find_if(stations.begin(), stations.end(),
+                           [station_id](const RadioStream& s) { return s.getID() == station_id; });
     return (it != stations.end()) ? &(*it) : nullptr;
 }

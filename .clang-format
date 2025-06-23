@@ -1,0 +1,47 @@
+# Based on the LLVM style, with customizations for readability and modern C++.
+Language: Cpp
+BasedOnStyle: LLVM
+
+# Indentation and Spacing
+IndentWidth: 4
+UseTab: Never
+FixNamespaceComments: false
+NamespaceIndentation: All
+SpaceAfterCStyleCast: true
+SpaceBeforeParens: ControlStatements
+SpaceBeforeAssignmentOperators: true
+
+# Line and Column Limits
+ColumnLimit: 120
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterControlStatement: Never
+  AfterFunction: false
+
+# Braces, Blocks, and Statements
+AllowShortBlocksOnASingleLine: false
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: All
+AllowShortEnumsOnASingleLine: false
+
+# Pointers and References
+PointerAlignment: Left
+
+# Includes
+SortIncludes: true
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex:           '^<.*\.h>'
+    Priority:        1
+  - Regex:           '^<.*>'
+    Priority:        2
+  - Regex:           '.*'
+    Priority:        3
+
+# Function Formatting
+BinPackParameters: false
+AllowAllParametersOfDeclarationOnNextLine: false
+
+# Comments
+AlignTrailingComments: true

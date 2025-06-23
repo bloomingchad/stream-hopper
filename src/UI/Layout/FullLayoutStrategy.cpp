@@ -1,17 +1,20 @@
 #include "UI/Layout/FullLayoutStrategy.h"
-#include "UI/HeaderBar.h"
-#include "UI/FooterBar.h"
-#include "UI/StationsPanel.h"
-#include "UI/NowPlayingPanel.h"
-#include "UI/HistoryPanel.h"
-#include "UI/StateSnapshot.h"
 
-void FullLayoutStrategy::calculateDimensions(
-    int width, int height,
-    HeaderBar& header, FooterBar& footer,
-    StationsPanel& stations, NowPlayingPanel& now_playing, HistoryPanel& history,
-    const StateSnapshot& snapshot
-) {
+#include "UI/FooterBar.h"
+#include "UI/HeaderBar.h"
+#include "UI/HistoryPanel.h"
+#include "UI/NowPlayingPanel.h"
+#include "UI/StateSnapshot.h"
+#include "UI/StationsPanel.h"
+
+void FullLayoutStrategy::calculateDimensions(int width,
+                                             int height,
+                                             HeaderBar& header,
+                                             FooterBar& footer,
+                                             StationsPanel& stations,
+                                             NowPlayingPanel& now_playing,
+                                             HistoryPanel& history,
+                                             const StateSnapshot& snapshot) {
     int content_h = height - 2; // -2 for header/footer
     int left_panel_w = std::max(35, width / 3);
     int right_panel_w = width - left_panel_w;

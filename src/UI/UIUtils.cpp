@@ -1,11 +1,13 @@
 #include "UI/UIUtils.h"
+
+#include <ncurses.h> // for colors
+
+#include <algorithm> // For std::search
+#include <cctype>    // For std::toupper
 #include <chrono>
 #include <ctime>
 #include <iomanip>
 #include <sstream>
-#include <algorithm> // For std::search
-#include <cctype>    // For std::toupper
-#include <ncurses.h> // for colors
 
 std::string truncate_string(const std::string& str, size_t width) {
     if (width > 3 && str.length() > width) {
@@ -24,10 +26,12 @@ std::string format_history_timestamp(const std::string& ts_str) {
 
     auto entry_time = std::chrono::system_clock::from_time_t(std::mktime(&tm));
     auto now = std::chrono::system_clock::now();
-    
+
     time_t t_now = std::chrono::system_clock::to_time_t(now);
     std::tm tm_now = *std::localtime(&t_now);
-    tm_now.tm_hour = 0; tm_now.tm_min = 0; tm_now.tm_sec = 0;
+    tm_now.tm_hour = 0;
+    tm_now.tm_min = 0;
+    tm_now.tm_sec = 0;
     auto today_start = std::chrono::system_clock::from_time_t(std::mktime(&tm_now));
 
     std::stringstream time_ss;
@@ -58,7 +62,7 @@ void draw_box(int y, int x, int w, int h, const std::string& title, bool is_focu
     mvwaddch(stdscr, y, x + w - 1, ACS_URCORNER);
     mvwaddch(stdscr, y + h - 1, x, ACS_LLCORNER);
     mvwaddch(stdscr, y + h - 1, x + w - 1, ACS_LRCORNER);
-    
+
     if (!title.empty()) {
         if (is_focused) {
             attron(A_BOLD);
@@ -75,11 +79,10 @@ void draw_box(int y, int x, int w, int h, const std::string& title, bool is_focu
 }
 
 bool contains_ci(const std::string& haystack, const std::string& needle) {
-    if (needle.empty()) return true;
-    auto it = std::search(haystack.begin(), haystack.end(), needle.begin(), needle.end(), 
-        [](char ch1, char ch2) { 
-            return std::toupper(static_cast<unsigned char>(ch1)) == std::toupper(static_cast<unsigned char>(ch2)); 
-        }
-    );
+    if (needle.empty())
+        return true;
+    auto it = std::search(haystack.begin(), haystack.end(), needle.begin(), needle.end(), [](char ch1, char ch2) {
+        return std::toupper(static_cast<unsigned char>(ch1)) == std::toupper(static_cast<unsigned char>(ch2));
+    });
     return (it != haystack.end());
 }

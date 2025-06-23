@@ -1,10 +1,10 @@
 #ifndef UIMANAGER_H
 #define UIMANAGER_H
 
-#include <vector>
-#include <string>
 #include <atomic>
 #include <memory>
+#include <string>
+#include <vector>
 
 // Forward declarations
 class StationsPanel;
@@ -16,7 +16,7 @@ class ILayoutStrategy;
 struct StateSnapshot; // The one and only data source
 
 class UIManager {
-public:
+  public:
     UIManager();
     ~UIManager();
 
@@ -27,7 +27,7 @@ public:
     void setInputTimeout(int milliseconds);
     void handleResize();
 
-private:
+  private:
     void updateLayoutStrategy(int width);
 
     // UI Components

@@ -1,11 +1,12 @@
 #ifndef MPVINSTANCE_H
 #define MPVINSTANCE_H
 
-#include <string>
 #include <mpv/client.h>
 
+#include <string>
+
 class MpvInstance {
-public:
+  public:
     MpvInstance();
     ~MpvInstance();
 
@@ -18,7 +19,7 @@ public:
     void shutdown(); // New method for explicit shutdown
     mpv_handle* get() const;
 
-private:
+  private:
     mpv_handle* m_mpv;
 };
 

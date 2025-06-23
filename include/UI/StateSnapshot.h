@@ -1,11 +1,12 @@
 #ifndef STATESNAPSHOT_H
 #define STATESNAPSHOT_H
 
+#include <chrono>
 #include <string>
 #include <vector>
-#include <chrono>
-#include "RadioStream.h" 
-#include "AppState.h"    
+
+#include "AppState.h"
+#include "RadioStream.h"
 #include "nlohmann/json.hpp"
 
 // A plain-old-data struct containing only what the UI needs to render a single station.

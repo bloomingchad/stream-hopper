@@ -6,11 +6,11 @@
 #include "nlohmann/json.hpp"
 
 class NowPlayingPanel : public Panel {
-public:
+  public:
     // FIX: This signature now matches the implementation and UIManager's call.
     void draw(const StateSnapshot& snapshot);
 
-private:
+  private:
     void drawAutoHopView(int inner_w, int remaining_seconds, int total_duration);
     void drawNormalView(const StationDisplayData& station, int inner_w);
     void drawCycleStatus(const StationDisplayData& station, int inner_w);

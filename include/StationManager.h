@@ -1,25 +1,26 @@
 #ifndef STATIONMANAGER_H
 #define STATIONMANAGER_H
 
-#include "RadioStream.h"
-#include "Core/PreloadStrategy.h"
-#include "Core/Message.h"
-#include "Core/UpdateManager.h" 
-#include "SessionState.h"
-#include "UI/StateSnapshot.h"
-#include "PersistenceManager.h"
-#include "Utils.h" // Include for UrlEncodingStyle
-#include <string>
-#include <vector>
-#include <thread>
-#include <memory>
 #include <atomic>
 #include <condition_variable>
-#include <mutex>
 #include <deque>
-#include <variant>
-#include <unordered_set>
 #include <map>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <unordered_set>
+#include <variant>
+#include <vector>
+
+#include "Core/Message.h"
+#include "Core/PreloadStrategy.h"
+#include "Core/UpdateManager.h"
+#include "PersistenceManager.h"
+#include "RadioStream.h"
+#include "SessionState.h"
+#include "UI/StateSnapshot.h"
+#include "Utils.h" // Include for UrlEncodingStyle
 #include "nlohmann/json.hpp"
 
 class MpvEventHandler;
@@ -101,7 +102,7 @@ temporary status indicators (like a success/fail icon) after their timeout.
 Adherence to these principles is critical to prevent UI regressions.
 */
 class StationManager {
-public:
+  public:
     StationManager(const StationData& station_data);
     ~StationManager();
     void post(StationManagerMessage message);
@@ -109,7 +110,7 @@ public:
     std::atomic<bool>& getNeedsRedrawFlag();
     std::atomic<bool>& getQuitFlag();
 
-private:
+  private:
     friend class MpvEventHandler;
     friend class ActionHandler;
     friend class SystemHandler;
@@ -127,9 +128,13 @@ private:
     void loadSearchProviders(); // New method to load config
 
     struct ActiveFade {
-        int station_id; int generation; double start_vol; double target_vol;
-        std::chrono::steady_clock::time_point start_time; int duration_ms;
-        bool is_for_pending_instance; 
+        int station_id;
+        int generation;
+        double start_vol;
+        double target_vol;
+        std::chrono::steady_clock::time_point start_time;
+        int duration_ms;
+        bool is_for_pending_instance;
     };
 
     // Core Components & Data

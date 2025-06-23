@@ -1,11 +1,12 @@
 #ifndef SESSIONSTATE_H
 #define SESSIONSTATE_H
 
-#include "AppState.h"
 #include <chrono>
 #include <deque>
-#include <string>
 #include <optional>
+#include <string>
+
+#include "AppState.h"
 
 /**
  * @class SessionState
@@ -42,8 +43,8 @@ struct SessionState {
     std::string temporary_status_message;
     std::optional<std::chrono::steady_clock::time_point> temporary_message_end_time;
 
-    SessionState() : last_switch_time(std::chrono::steady_clock::now()),
-                     session_start_time(std::chrono::steady_clock::now()) {}
+    SessionState()
+        : last_switch_time(std::chrono::steady_clock::now()), session_start_time(std::chrono::steady_clock::now()) {}
 };
 
 #endif // SESSIONSTATE_H

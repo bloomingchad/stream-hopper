@@ -1,25 +1,25 @@
 #ifndef RADIOPLAYER_H
 #define RADIOPLAYER_H
 
-#include <vector>
-#include <string>
-#include <memory>
-#include <map>
 #include <functional>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
 
 class UIManager;
 class StationManager;
 #include "Core/Message.h" // Include the new message header
 
 class RadioPlayer {
-public:
+  public:
     // Now takes a reference to the already-created manager
     RadioPlayer(StationManager& manager);
     ~RadioPlayer();
 
     void run();
 
-private:
+  private:
     void handleInput(int ch);
 
     std::map<int, StationManagerMessage> m_input_handlers;

@@ -1,21 +1,31 @@
 #ifndef RADIOSTREAM_H
 #define RADIOSTREAM_H
 
-#include <string>
-#include <vector>
 #include <chrono>
 #include <optional>
+#include <string>
+#include <vector>
+
 #include "MpvInstance.h"
 
 struct mpv_handle;
 
-enum class PlaybackState { Playing, Muted, Ducked };
-enum class CyclingState { IDLE, CYCLING, SUCCEEDED, FAILED };
+enum class PlaybackState {
+    Playing,
+    Muted,
+    Ducked
+};
+enum class CyclingState {
+    IDLE,
+    CYCLING,
+    SUCCEEDED,
+    FAILED
+};
 
 class RadioStream {
-public:
+  public:
     RadioStream(int id, std::string name, std::vector<std::string> urls);
-    
+
     ~RadioStream() = default;
     RadioStream(const RadioStream&) = delete;
     RadioStream& operator=(const RadioStream&) = delete;
@@ -75,7 +85,7 @@ public:
     void setMuteStartTime();
     void resetMuteStartTime();
 
-private:
+  private:
     int m_id;
     std::string m_name;
     std::vector<std::string> m_urls;
@@ -86,7 +96,7 @@ private:
     int m_generation;
     CyclingState m_cycling_state;
     std::chrono::steady_clock::time_point m_cycle_status_end_time;
-    
+
     std::string m_pending_title;
     int m_pending_bitrate;
     std::optional<std::chrono::steady_clock::time_point> m_cycle_start_time;

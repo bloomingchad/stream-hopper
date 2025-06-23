@@ -8,10 +8,10 @@ class StationManager;
 
 // Handles all direct user actions
 class ActionHandler {
-public:
+  public:
     void process_action(StationManager& manager, const StationManagerMessage& msg);
 
-private:
+  private:
     void handle_navigateStations(StationManager& manager, NavDirection direction);
     void handle_navigateHistory(StationManager& manager, NavDirection direction);
     void handle_navigate(StationManager& manager, NavDirection direction);

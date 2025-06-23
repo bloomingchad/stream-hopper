@@ -7,10 +7,10 @@ class StationManager;
 
 // Handles system-level and lifecycle messages
 class SystemHandler {
-public:
+  public:
     void process_system(StationManager& manager, const StationManagerMessage& msg);
 
-private:
+  private:
     void handle_updateAndPoll(StationManager& manager);
     void handle_quit(StationManager& manager);
 

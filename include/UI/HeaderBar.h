@@ -1,11 +1,11 @@
 #ifndef HEADERBAR_H
 #define HEADERBAR_H
 
-#include "UI/Panel.h"
 #include "AppState.h" // For HopperMode enum
+#include "UI/Panel.h"
 
 class HeaderBar : public Panel {
-public:
+  public:
     void draw(double current_volume, HopperMode hopper_mode);
 };
 

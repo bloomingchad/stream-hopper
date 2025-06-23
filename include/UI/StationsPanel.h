@@ -1,19 +1,20 @@
 #ifndef STATIONSPANEL_H
 #define STATIONSPANEL_H
 
-#include "UI/Panel.h"
-#include <vector>
 #include <string>
+#include <vector>
+
+#include "UI/Panel.h"
 
 // Forward declarations
 struct StationDisplayData;
 
 class StationsPanel : public Panel {
-public:
+  public:
     StationsPanel();
     void draw(const std::vector<StationDisplayData>& stations, int active_station_idx, bool is_focused);
 
-private:
+  private:
     std::string getStationStatusString(const StationDisplayData& station) const;
     void drawStationLine(int y, const StationDisplayData& station, bool is_selected, int inner_w);
 

@@ -1,8 +1,10 @@
 #include "UI/StationsPanel.h"
+
+#include <ncurses.h>
+
+#include "RadioStream.h"      // For PlaybackState
 #include "UI/StateSnapshot.h" // For StationDisplayData
 #include "UI/UIUtils.h"
-#include "RadioStream.h" // For PlaybackState
-#include <ncurses.h>
 
 StationsPanel::StationsPanel() : m_station_scroll_offset(0) {}
 
@@ -18,9 +20,12 @@ std::string StationsPanel::getStationStatusString(const StationDisplayData& stat
     }
     if (station.current_volume > 0.1) {
         switch (station.playback_state) {
-            case PlaybackState::Playing: return "▶️ ";
-            case PlaybackState::Ducked:  return "🎧 ";
-            default: break;
+        case PlaybackState::Playing:
+            return "▶️ ";
+        case PlaybackState::Ducked:
+            return "🎧 ";
+        default:
+            break;
         }
     }
     return "   ";
@@ -60,7 +65,8 @@ void StationsPanel::draw(const std::vector<StationDisplayData>& stations, int ac
 
     for (int i = 0; i < visible_items; ++i) {
         int station_idx = m_station_scroll_offset + i;
-        if (station_idx >= (int)stations.size()) break;
+        if (station_idx >= (int) stations.size())
+            break;
 
         bool is_selected = (station_idx == active_station_idx);
         drawStationLine(m_y + 1 + i, stations[station_idx], is_selected, inner_w);

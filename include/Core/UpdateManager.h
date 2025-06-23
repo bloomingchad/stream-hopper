@@ -5,13 +5,13 @@
 class StationManager;
 
 class UpdateManager {
-public:
+  public:
     UpdateManager() = default;
 
     // The main entry point for processing all time-based updates
     void process_updates(StationManager& manager);
 
-private:
+  private:
     // Private helpers for each specific update task
     void handle_activeFades(StationManager& manager);
     void handle_cycle_status_timers(StationManager& manager);

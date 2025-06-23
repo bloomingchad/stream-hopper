@@ -1,12 +1,13 @@
 #ifndef PERSISTENCEMANAGER_H
 #define PERSISTENCEMANAGER_H
 
-#include "nlohmann/json.hpp"
-#include <string>
-#include <vector>
-#include <unordered_set>
 #include <optional>
+#include <string>
+#include <unordered_set>
 #include <utility> // For std::pair
+#include <vector>
+
+#include "nlohmann/json.hpp"
 
 // Forward declaration
 class RadioStream;
@@ -15,7 +16,7 @@ class RadioStream;
 using StationData = std::vector<std::pair<std::string, std::vector<std::string>>>;
 
 class PersistenceManager {
-public:
+  public:
     PersistenceManager() = default;
 
     // Station config loading

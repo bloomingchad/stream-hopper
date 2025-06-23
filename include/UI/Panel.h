@@ -2,7 +2,7 @@
 #define PANEL_H
 
 class Panel {
-public:
+  public:
     Panel() : m_y(0), m_x(0), m_w(0), m_h(0) {}
     virtual ~Panel() = default;
 
@@ -13,7 +13,7 @@ public:
         m_h = h;
     }
 
-protected:
+  protected:
     int m_y, m_x, m_w, m_h;
 };
 

@@ -1,14 +1,16 @@
-#include <iostream>
-#include <vector>
-#include <string>
-#include <stdexcept>
 #include <fcntl.h>
-#include <unistd.h>
-#include <ctime>
 #include <ncurses.h>
+#include <unistd.h>
+
+#include <ctime>
+#include <iostream>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+#include "PersistenceManager.h" // <-- New include
 #include "RadioPlayer.h"
 #include "StationManager.h"
-#include "PersistenceManager.h" // <-- New include
 
 void suppress_stderr() {
     int dev_null = open("/dev/null", O_WRONLY);
@@ -30,7 +32,7 @@ int main() {
         // Step 2: Pass the loaded data to the StationManager.
         StationManager manager(station_data);
         RadioPlayer player(manager);
-        
+
         // Step 3: Run the application.
         player.run();
 
@@ -39,10 +41,10 @@ int main() {
         if (stdscr != NULL && !isendwin()) {
             endwin();
         }
-        
+
         std::cout << "\n\nA critical error occurred during startup:\n" << e.what() << std::endl;
         std::cout << "The application must close." << std::endl;
-        
+
         // Log to file as a fallback.
         FILE* logfile = fopen("stream_hopper_crash.log", "a");
         if (logfile) {

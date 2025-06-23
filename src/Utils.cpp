@@ -1,9 +1,10 @@
 #include "Utils.h"
-#include <iostream>
-#include <stdexcept> // Required for std::runtime_error
-#include <sstream>
-#include <iomanip>
+
 #include <cstdlib>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
+#include <stdexcept> // Required for std::runtime_error
 
 void check_mpv_error(int status, const std::string& context) {
     if (status < 0) {
@@ -27,12 +28,13 @@ std::string url_encode(const std::string& value, UrlEncodingStyle encoding_style
         }
 
         if (isalnum(c) || c == '_' || c == '~' || (encoding_style != UrlEncodingStyle::BANDCAMP_SPECIAL && c == '.')) {
-             if (encoding_style == UrlEncodingStyle::BANDCAMP_SPECIAL && c == '-') { // already handled above but defensive
+            if (encoding_style == UrlEncodingStyle::BANDCAMP_SPECIAL &&
+                c == '-') { // already handled above but defensive
                 escaped << '+';
-             } else {
+            } else {
                 escaped << c;
-             }
-             continue;
+            }
+            continue;
         }
 
         if (c == ' ') {
@@ -43,15 +45,14 @@ std::string url_encode(const std::string& value, UrlEncodingStyle encoding_style
             }
             continue;
         }
-        
+
         escaped << std::uppercase;
-        escaped << '%' << std::setw(2) << int((unsigned char)c);
+        escaped << '%' << std::setw(2) << int((unsigned char) c);
         escaped << std::nouppercase;
     }
 
     return escaped.str();
 }
-
 
 bool execute_open_command(const std::string& url, std::string& error_message) {
     std::string open_command;

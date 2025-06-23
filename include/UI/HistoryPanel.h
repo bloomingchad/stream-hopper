@@ -7,8 +7,9 @@
 struct StationDisplayData;
 
 class HistoryPanel : public Panel {
-public:
-    void draw(const StationDisplayData& station, const nlohmann::json& station_history, int scroll_offset, bool is_focused);
+  public:
+    void
+    draw(const StationDisplayData& station, const nlohmann::json& station_history, int scroll_offset, bool is_focused);
 };
 
 #endif // HISTORYPANEL_H

@@ -1,8 +1,10 @@
 #include "PersistenceManager.h"
-#include "RadioStream.h" // For RadioStream definition in saveFavorites
+
 #include <fstream>
 #include <iomanip>
 #include <stdexcept> // For std::runtime_error
+
+#include "RadioStream.h" // For RadioStream definition in saveFavorites
 
 using nlohmann::json;
 
@@ -15,7 +17,8 @@ const std::string HISTORY_FILENAME = "radio_history.json";
 StationData PersistenceManager::loadStations() const {
     std::ifstream i(STATIONS_FILENAME);
     if (!i.is_open()) {
-        throw std::runtime_error("Could not open stations.jsonc. Please ensure the file exists in the same directory as the executable.");
+        throw std::runtime_error(
+            "Could not open stations.jsonc. Please ensure the file exists in the same directory as the executable.");
     }
 
     StationData station_data;
@@ -46,7 +49,7 @@ StationData PersistenceManager::loadStations() const {
                     urls.push_back(url_entry.get<std::string>());
                 }
             }
-            
+
             if (!name.empty() && !urls.empty()) {
                 station_data.emplace_back(name, urls);
             }
@@ -88,15 +91,19 @@ void PersistenceManager::saveHistory(const json& history_data) const {
 std::unordered_set<std::string> PersistenceManager::loadFavoriteNames() const {
     std::unordered_set<std::string> favorite_set;
     std::ifstream i(FAVORITES_FILENAME);
-    if (!i.is_open()) return favorite_set;
+    if (!i.is_open())
+        return favorite_set;
 
     json fav_names;
     try {
         i >> fav_names;
-        if (!fav_names.is_array()) return favorite_set;
-    } catch (const json::parse_error &) { return favorite_set; }
+        if (!fav_names.is_array())
+            return favorite_set;
+    } catch (const json::parse_error&) {
+        return favorite_set;
+    }
 
-    for (const auto &name_json : fav_names) {
+    for (const auto& name_json : fav_names) {
         if (name_json.is_string()) {
             favorite_set.insert(name_json.get<std::string>());
         }
@@ -106,7 +113,7 @@ std::unordered_set<std::string> PersistenceManager::loadFavoriteNames() const {
 
 void PersistenceManager::saveFavorites(const std::vector<RadioStream>& stations) const {
     json fav_names = json::array();
-    for (const auto &station : stations) {
+    for (const auto& station : stations) {
         if (station.isFavorite()) {
             fav_names.push_back(station.getName());
         }
@@ -120,7 +127,8 @@ void PersistenceManager::saveFavorites(const std::vector<RadioStream>& stations)
 
 std::optional<std::string> PersistenceManager::loadLastStationName() const {
     std::ifstream i(SESSION_FILENAME);
-    if (!i.is_open()) return std::nullopt;
+    if (!i.is_open())
+        return std::nullopt;
 
     try {
         json session_data;
@@ -135,7 +143,8 @@ std::optional<std::string> PersistenceManager::loadLastStationName() const {
 }
 
 void PersistenceManager::saveSession(const std::string& last_station_name) const {
-    if (last_station_name.empty()) return;
+    if (last_station_name.empty())
+        return;
     json session_data;
     session_data["last_station_name"] = last_station_name;
     std::ofstream o(SESSION_FILENAME);

@@ -10,15 +10,17 @@ class HistoryPanel;
 struct StateSnapshot;
 
 class ILayoutStrategy {
-public:
+  public:
     virtual ~ILayoutStrategy() = default;
 
-    virtual void calculateDimensions(
-        int width, int height,
-        HeaderBar& header, FooterBar& footer,
-        StationsPanel& stations, NowPlayingPanel& now_playing, HistoryPanel& history,
-        const StateSnapshot& snapshot
-    ) = 0;
+    virtual void calculateDimensions(int width,
+                                     int height,
+                                     HeaderBar& header,
+                                     FooterBar& footer,
+                                     StationsPanel& stations,
+                                     NowPlayingPanel& now_playing,
+                                     HistoryPanel& history,
+                                     const StateSnapshot& snapshot) = 0;
 };
 
 #endif // ILAYOUTSTRATEGY_H
