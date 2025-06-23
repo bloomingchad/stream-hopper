@@ -20,47 +20,63 @@ void SystemHandler::process_system(StationManager& manager, const StationManager
     }, msg);
 }
 
-void SystemHandler::handle_updateAndPoll(StationManager& manager) {
-    manager.m_update_manager->process_updates(manager);
-    manager.pollMpvEvents();
-
-    auto now = std::chrono::steady_clock::now();
+void SystemHandler::check_copy_mode_timeout(StationManager& manager) {
     if (manager.m_session_state.copy_mode_active) {
+        auto now = std::chrono::steady_clock::now();
         if (std::chrono::duration_cast<std::chrono::seconds>(now - manager.m_session_state.copy_mode_start_time).count() >= COPY_MODE_TIMEOUT_SECONDS) {
-            // Post a message to the queue instead of calling the handler directly
             manager.post(Msg::ToggleCopyMode{});
         }
     }
+}
+
+void SystemHandler::check_auto_hop_timer(StationManager& manager) {
     if (manager.m_session_state.auto_hop_mode_active) {
         auto station_count = manager.m_stations.size();
         if (station_count > 0) {
             int duration = AUTO_HOP_TOTAL_TIME_SECONDS / static_cast<int>(station_count);
+            auto now = std::chrono::steady_clock::now();
             if (std::chrono::duration_cast<std::chrono::seconds>(now - manager.m_session_state.auto_hop_start_time).count() >= duration) {
-                // Post a message to the queue
                 manager.post(Msg::NavigateDown{});
                 manager.m_session_state.auto_hop_start_time = std::chrono::steady_clock::now();
             }
         }
     }
+}
+
+void SystemHandler::check_focus_mode_timer(StationManager& manager) {
     if (!manager.m_session_state.auto_hop_mode_active && manager.m_session_state.hopper_mode != HopperMode::FOCUS) {
+        auto now = std::chrono::steady_clock::now();
         if (std::chrono::duration_cast<std::chrono::seconds>(now - manager.m_session_state.last_switch_time).count() >= FOCUS_MODE_SECONDS) {
             manager.m_session_state.hopper_mode = HopperMode::FOCUS;
             manager.updateActiveWindow();
             manager.m_needs_redraw = true;
         }
     }
+}
+
+void SystemHandler::check_mute_timeout(StationManager& manager) {
     if (!manager.m_session_state.auto_hop_mode_active && !manager.m_stations.empty()) {
         const auto& active_station = manager.m_stations[manager.m_session_state.active_station_idx];
         if (active_station.getPlaybackState() == PlaybackState::Muted) {
             if (auto mute_start = active_station.getMuteStartTime()) {
+                auto now = std::chrono::steady_clock::now();
                 if (std::chrono::duration_cast<std::chrono::seconds>(now - *mute_start).count() >= FORGOTTEN_MUTE_SECONDS) {
                     manager.m_session_state.was_quit_by_mute_timeout = true;
-                    // Post a message to the queue
                     manager.post(Msg::Quit{});
                 }
             }
         }
     }
+}
+
+void SystemHandler::handle_updateAndPoll(StationManager& manager) {
+    manager.m_update_manager->process_updates(manager);
+    manager.pollMpvEvents();
+
+    check_copy_mode_timeout(manager);
+    check_auto_hop_timer(manager);
+    check_focus_mode_timer(manager);
+    check_mute_timeout(manager);
 
     bool is_any_station_cycling = std::any_of(manager.m_stations.begin(), manager.m_stations.end(),
         [](const RadioStream& s) { return s.getCyclingState() == CyclingState::CYCLING; });

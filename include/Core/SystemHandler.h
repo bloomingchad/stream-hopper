@@ -13,6 +13,12 @@ public:
 private:
     void handle_updateAndPoll(StationManager& manager);
     void handle_quit(StationManager& manager);
+
+    // Private helpers for each timer-based check
+    void check_copy_mode_timeout(StationManager& manager);
+    void check_auto_hop_timer(StationManager& manager);
+    void check_focus_mode_timer(StationManager& manager);
+    void check_mute_timeout(StationManager& manager);
 };
 
 #endif // SYSTEMHANDLER_H
