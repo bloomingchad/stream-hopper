@@ -2,25 +2,61 @@
 
 # A helper script to interact with the Radio Browser API.
 # It handles server discovery and fetching raw data.
-# Dependencies: curl
+# Dependencies: curl, dig, shuf
 
 set -e # Exit immediately if a command exits with a non-zero status.
 
-# --- Function to list all tags ---
-# Fetches the raw JSON array of all tags from the API.
-# The C++ application will be responsible for processing this.
-list_tags() {
-    if ! command -v curl &> /dev/null; then
-        echo "Error: 'curl' is required. Please install it to use this feature." >&2
+# --- Function to find a working server ---
+# It's crucial not to hardcode a single API server.
+# This function gets the list of all mirrors, shuffles them,
+# and returns the first one that responds.
+get_api_server() {
+    # Check for dependencies
+    if ! command -v dig &> /dev/null || ! command -v shuf &> /dev/null; then
+        echo "Error: 'dig' and 'shuf' are required. Please install dnsutils/bind-tools." >&2
         exit 1
     fi
 
-    # For now, use a hardcoded, reliable server.
-    # We will add dynamic server discovery in a later step.
-    local server="https://de1.api.radio-browser.info"
+    # The SRV record is the recommended way to discover servers.
+    # We shuffle the list to distribute the load. `awk` extracts the server name.
+    # The timeout for dig is set to 5 seconds.
+    local servers
+    servers=$(dig +short +time=5 SRV _api._tcp.radio-browser.info | awk '{print $4}' | shuf)
 
-    # Fetch the raw tag data. The C++ app will do the heavy lifting of parsing.
-    # The --fail flag ensures curl exits with an error if the HTTP request fails.
+    if [ -z "$servers" ]; then
+        echo "Error: Could not resolve any Radio Browser API servers via DNS." >&2
+        return 1
+    fi
+
+    for server in $servers; do
+        # Check if the server is reachable with a quick HEAD request (timeout 2s)
+        if curl --head --silent --fail --max-time 2 "https://$server/json/stats" > /dev/null; then
+            echo "https://$server"
+            return 0
+        fi
+    done
+
+    echo "Error: Could not find any responsive Radio Browser API servers." >&2
+    return 1
+}
+
+
+# --- Function to list all tags ---
+# Fetches the raw JSON array of all tags from the API.
+list_tags() {
+    if ! command -v curl &> /dev/null; then
+        echo "Error: 'curl' is required. Please install it." >&2
+        exit 1
+    fi
+
+    local server
+    server=$(get_api_server)
+    if [ $? -ne 0 ]; then
+        # The error message from get_api_server has already been printed to stderr.
+        exit 1
+    fi
+
+    # Fetch the raw tag data from the discovered server.
     curl --silent --fail --user-agent "stream-hopper/1.0" "$server/json/tags"
 }
 
