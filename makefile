@@ -17,6 +17,9 @@ SRCS = $(shell find src -name '*.cpp')
 # This replaces the 'src/' prefix with 'build/' and the '.cpp' suffix with '.o'
 OBJS = $(SRCS:src/%.cpp=build/%.o)
 
+# Helper Scripts
+SCRIPTS = api_helper.sh
+
 # Default target
 all: $(TARGET)
 
@@ -24,6 +27,10 @@ all: $(TARGET)
 $(TARGET): $(OBJS)
 	@echo "==> Linking target: $@"
 	$(CXX) $(LDFLAGS) $(OBJS) -o $@ $(LDLIBS)
+	@echo "==> Preparing helper scripts..."
+	@cp $(SCRIPTS) build/
+	@chmod +x build/$(SCRIPTS)
+
 
 # Pattern rule to compile .cpp files from src/ and its subdirectories
 build/%.o: src/%.cpp
