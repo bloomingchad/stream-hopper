@@ -71,21 +71,21 @@ int main(int argc, const char* argv[]) {
         // The '--from' flag is handled below with the main player logic.
         // If the arg is not '--from' and not a known command, it's an error.
         if (arg != "--from") {
-             std::cerr << "Error: Unknown command '" << arg << "'." << std::endl;
-             print_help();
-             return 1;
+            std::cerr << "Error: Unknown command '" << arg << "'." << std::endl;
+            print_help();
+            return 1;
         }
     }
 
     // --- Player Mode ---
     std::string station_file_to_load = "stations.jsonc";
     if (argc > 1 && std::string(argv[1]) == "--from") {
-         if (argc > 2) {
+        if (argc > 2) {
             station_file_to_load = argv[2];
         } else {
-             std::cerr << "Error: --from flag requires a filename." << std::endl;
-             print_help();
-             return 1;
+            std::cerr << "Error: --from flag requires a filename." << std::endl;
+            print_help();
+            return 1;
         }
     }
 

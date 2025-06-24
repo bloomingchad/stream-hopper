@@ -7,6 +7,7 @@
 #include <utility> // For std::pair
 #include <vector>
 
+#include "CuratorStation.h" // <<< THIS IS THE KEY
 #include "nlohmann/json.hpp"
 
 // Forward declaration
@@ -19,8 +20,9 @@ class PersistenceManager {
   public:
     PersistenceManager() = default;
 
-    // Station config loading now takes a filename
     StationData loadStations(const std::string& filename) const;
+    // <<< FIX: The declaration must be here.
+    std::vector<CuratorStation> loadCurationCandidates(const std::string& filename) const;
 
     // History Persistence
     nlohmann::json loadHistory() const;

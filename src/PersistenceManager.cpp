@@ -22,25 +22,19 @@ StationData PersistenceManager::loadStations(const std::string& filename) const 
 
     StationData station_data;
     try {
-        // The 'true' argument in the 4th position enables comment skipping.
         json stations_json = json::parse(i, nullptr, true, true);
-
         if (!stations_json.is_array()) {
             throw std::runtime_error(filename + " must contain a top-level JSON array.");
         }
-
         for (const auto& station_entry : stations_json) {
             if (!station_entry.is_object() || !station_entry.contains("name") || !station_entry.contains("urls")) {
-                continue; // Skip malformed entries silently
+                continue;
             }
-
             const auto& name_json = station_entry["name"];
             const auto& urls_json = station_entry["urls"];
-
             if (!name_json.is_string() || !urls_json.is_array() || urls_json.empty()) {
-                continue; // Skip entries with invalid types or no URLs
+                continue;
             }
-
             std::string name = name_json.get<std::string>();
             std::vector<std::string> urls;
             for (const auto& url_entry : urls_json) {
@@ -48,7 +42,6 @@ StationData PersistenceManager::loadStations(const std::string& filename) const 
                     urls.push_back(url_entry.get<std::string>());
                 }
             }
-
             if (!name.empty() && !urls.empty()) {
                 station_data.emplace_back(name, urls);
             }
@@ -56,12 +49,48 @@ StationData PersistenceManager::loadStations(const std::string& filename) const 
     } catch (const json::parse_error& e) {
         throw std::runtime_error("Failed to parse " + filename + ": " + std::string(e.what()));
     }
-
     if (station_data.empty()) {
         throw std::runtime_error(filename + " is empty or contains no valid station entries.");
     }
-
     return station_data;
+}
+
+std::vector<CuratorStation> PersistenceManager::loadCurationCandidates(const std::string& filename) const {
+    std::ifstream i(filename);
+    if (!i.is_open()) {
+        throw std::runtime_error("Could not open curation file: " + filename);
+    }
+
+    std::vector<CuratorStation> candidates;
+    try {
+        json stations_json = json::parse(i, nullptr, true, true);
+        if (!stations_json.is_array()) {
+            throw std::runtime_error(filename + " must contain a top-level JSON array.");
+        }
+        for (const auto& entry : stations_json) {
+            CuratorStation station;
+            station.name = entry.value("name", "Unknown");
+            station.country_code = entry.value("countrycode", "N/A");
+            station.bitrate = entry.value("bitrate", 0);
+            station.votes = entry.value("votes", 0);
+            if (entry.contains("urls") && entry["urls"].is_array()) {
+                for (const auto& url : entry["urls"]) {
+                    station.urls.push_back(url.get<std::string>());
+                }
+            }
+            if (entry.contains("tags") && entry["tags"].is_array()) {
+                for (const auto& tag : entry["tags"]) {
+                    station.tags.push_back(tag.get<std::string>());
+                }
+            }
+            if (!station.name.empty() && !station.urls.empty()) {
+                candidates.push_back(station);
+            }
+        }
+    } catch (const json::parse_error& e) {
+        throw std::runtime_error("Failed to parse " + filename + ": " + std::string(e.what()));
+    }
+    return candidates;
 }
 
 json PersistenceManager::loadHistory() const {
@@ -74,7 +103,6 @@ json PersistenceManager::loadHistory() const {
                 return history_data;
             }
         } catch (...) {
-            // Fall through to return an empty object on error
         }
     }
     return json::object();
@@ -136,7 +164,6 @@ std::optional<std::string> PersistenceManager::loadLastStationName() const {
             return session_data["last_station_name"].get<std::string>();
         }
     } catch (const json::parse_error&) {
-        // Silently ignore
     }
     return std::nullopt;
 }

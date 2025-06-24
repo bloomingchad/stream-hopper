@@ -13,7 +13,7 @@ CuratorUI::CuratorUI() {
     noecho();
     curs_set(0);
     keypad(stdscr, TRUE);
-    timeout(100); // Set a short timeout for getch()
+    timeout(100);
     init_colors();
 }
 
@@ -31,23 +31,24 @@ void CuratorUI::init_colors() {
     init_pair(3, COLOR_CYAN, -1);
 }
 
+// <<< FIX: Updated signature to take the whole CuratorStation object
 void CuratorUI::draw(const std::string& genre,
                      int current_index,
                      int total_candidates,
                      int kept_count,
-                     const std::string& station_name,
+                     const CuratorStation& station,
                      const std::string& status) {
     clear();
     int height, width;
     getmaxyx(stdscr, height, width);
 
-    // --- Header ---
+    // This is the old, simple UI. We will replace this in the next step.
+    // For now, it just needs to compile.
     attron(A_REVERSE);
     mvprintw(0, 0, "%*s", width, "");
-    mvprintw(0, 2, "STREAM HOPPER - CURATOR MODE");
+    mvprintw(0, 2, "STREAM HOPPER - CURATOR MODE (Step 17)");
     attroff(A_REVERSE);
 
-    // --- Main Content ---
     mvprintw(height / 2 - 4, 4, "Curating stations for genre:");
     attron(COLOR_PAIR(3) | A_BOLD);
     mvprintw(height / 2 - 3, 4, "%s", genre.c_str());
@@ -58,12 +59,11 @@ void CuratorUI::draw(const std::string& genre,
 
     mvprintw(height / 2 + 2, 4, "Now Reviewing:");
     attron(COLOR_PAIR(1));
-    mvwprintw(stdscr, height / 2 + 3, 4, "-> %s", truncate_string(station_name, width - 10).c_str());
+    mvwprintw(stdscr, height / 2 + 3, 4, "-> %s", truncate_string(station.name, width - 10).c_str());
     attroff(COLOR_PAIR(1));
 
     mvprintw(height / 2 + 5, 4, "Status: %s", truncate_string(status, width - 15).c_str());
 
-    // --- Footer ---
     std::string footer_text = "[K]eep | [D]iscard/Skip | [P]lay/Mute | [Q]uit & Save";
     attron(A_REVERSE);
     mvprintw(height - 1, 0, "%*s", width, "");
