@@ -13,10 +13,7 @@
 using json = nlohmann::json;
 
 CuratorApp::CuratorApp(const std::string& genre, StationData candidates)
-    : m_genre(genre),
-      m_candidates(std::move(candidates)),
-      m_current_index(0),
-      m_quit_flag(false),
+    : m_genre(genre), m_candidates(std::move(candidates)), m_current_index(0), m_quit_flag(false),
       m_mpv_ctx(nullptr) // mpv_ctx is not needed for this simple case.
 {
     m_ui = std::make_unique<CuratorUI>();
@@ -47,7 +44,7 @@ void CuratorApp::load_current_station() {
 }
 
 void CuratorApp::advance(bool keep_current) {
-    if (m_current_index < (int)m_candidates.size() && keep_current) {
+    if (m_current_index < (int) m_candidates.size() && keep_current) {
         m_kept_stations.push_back(m_candidates[m_current_index]);
     }
 
@@ -96,16 +93,18 @@ void CuratorApp::run() {
         // Poll mpv properties to update the UI state.
         if (m_active_station && m_active_station->isInitialized()) {
             char* title_cstr = nullptr;
-            if (mpv_get_property(m_active_station->getMpvHandle(), "media-title", MPV_FORMAT_STRING, &title_cstr) == 0) {
+            if (mpv_get_property(m_active_station->getMpvHandle(), "media-title", MPV_FORMAT_STRING, &title_cstr) ==
+                0) {
                 if (title_cstr) {
                     m_active_station->setCurrentTitle(title_cstr);
                     mpv_free(title_cstr);
                 }
             }
             int buffering_flag = 0;
-             if (mpv_get_property(m_active_station->getMpvHandle(), "core-idle", MPV_FORMAT_FLAG, &buffering_flag) == 0) {
-                 m_active_station->setBuffering(buffering_flag);
-             }
+            if (mpv_get_property(m_active_station->getMpvHandle(), "core-idle", MPV_FORMAT_FLAG, &buffering_flag) ==
+                0) {
+                m_active_station->setBuffering(buffering_flag);
+            }
         }
 
         std::string status_string = "Connecting...";
@@ -121,10 +120,10 @@ void CuratorApp::run() {
         }
 
         const std::string& current_station_name =
-            (m_current_index < (int)m_candidates.size()) ? m_candidates[m_current_index].first : "Finished!";
+            (m_current_index < (int) m_candidates.size()) ? m_candidates[m_current_index].first : "Finished!";
 
-        m_ui->draw(m_genre, m_current_index, m_candidates.size(), m_kept_stations.size(),
-                   current_station_name, status_string);
+        m_ui->draw(m_genre, m_current_index, m_candidates.size(), m_kept_stations.size(), current_station_name,
+                   status_string);
 
         int ch = getch();
         if (ch != ERR) {

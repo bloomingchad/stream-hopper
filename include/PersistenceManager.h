@@ -19,8 +19,8 @@ class PersistenceManager {
   public:
     PersistenceManager() = default;
 
-    // Station config loading
-    StationData loadStations() const;
+    // Station config loading now takes a filename
+    StationData loadStations(const std::string& filename) const;
 
     // History Persistence
     nlohmann::json loadHistory() const;

@@ -8,17 +8,16 @@
 
 using nlohmann::json;
 
-// Centralized filenames
-const std::string STATIONS_FILENAME = "stations.jsonc";
+// Centralized filenames for non-station data
 const std::string FAVORITES_FILENAME = "radio_favorites.json";
 const std::string SESSION_FILENAME = "radio_session.json";
 const std::string HISTORY_FILENAME = "radio_history.json";
 
-StationData PersistenceManager::loadStations() const {
-    std::ifstream i(STATIONS_FILENAME);
+StationData PersistenceManager::loadStations(const std::string& filename) const {
+    std::ifstream i(filename);
     if (!i.is_open()) {
-        throw std::runtime_error(
-            "Could not open stations.jsonc. Please ensure the file exists in the same directory as the executable.");
+        throw std::runtime_error("Could not open station file: " + filename +
+                                 ". Please ensure the file exists in the same directory as the executable.");
     }
 
     StationData station_data;
@@ -27,7 +26,7 @@ StationData PersistenceManager::loadStations() const {
         json stations_json = json::parse(i, nullptr, true, true);
 
         if (!stations_json.is_array()) {
-            throw std::runtime_error("stations.jsonc must contain a top-level JSON array.");
+            throw std::runtime_error(filename + " must contain a top-level JSON array.");
         }
 
         for (const auto& station_entry : stations_json) {
@@ -55,11 +54,11 @@ StationData PersistenceManager::loadStations() const {
             }
         }
     } catch (const json::parse_error& e) {
-        throw std::runtime_error("Failed to parse stations.jsonc: " + std::string(e.what()));
+        throw std::runtime_error("Failed to parse " + filename + ": " + std::string(e.what()));
     }
 
     if (station_data.empty()) {
-        throw std::runtime_error("stations.jsonc is empty or contains no valid station entries.");
+        throw std::runtime_error(filename + " is empty or contains no valid station entries.");
     }
 
     return station_data;

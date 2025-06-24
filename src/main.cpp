@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-#include "CuratorApp.h" // New include
+#include "CuratorApp.h"
 #include "PersistenceManager.h"
 #include "RadioPlayer.h"
 #include "StationManager.h"
@@ -34,8 +34,7 @@ void suppress_stderr() {
 
 // Normalizes and cleans a single tag name.
 std::string normalize_tag(std::string tag) {
-    std::transform(tag.begin(), tag.end(), tag.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
+    std::transform(tag.begin(), tag.end(), tag.begin(), [](unsigned char c) { return std::tolower(c); });
 
     // Canonical mapping for common variations
     if (tag == "dnb" || tag == "drum and bass" || tag == "drum & bass")
@@ -55,11 +54,31 @@ std::string normalize_tag(std::string tag) {
 // Processes the raw JSON from the API into a clean, sorted list of genre tags.
 std::vector<std::string> curate_tags(const json& raw_tags) {
     std::map<std::string, int> genre_counts;
-    const std::set<std::string> blacklist = {
-        "music",       "radio",         "fm",      "news", "talk",   "live",    "free",       "online",
-        "hits",        "musica",        "noticias", "various", "misc", "entertainment", "am",
-        "estación",    "méxico",    "norteamérica", "música", "pop rock", "latinoamérica",
-        "español", "community radio", "local news", "música en español"};
+    const std::set<std::string> blacklist = {"music",
+                                             "radio",
+                                             "fm",
+                                             "news",
+                                             "talk",
+                                             "live",
+                                             "free",
+                                             "online",
+                                             "hits",
+                                             "musica",
+                                             "noticias",
+                                             "various",
+                                             "misc",
+                                             "entertainment",
+                                             "am",
+                                             "estación",
+                                             "méxico",
+                                             "norteamérica",
+                                             "música",
+                                             "pop rock",
+                                             "latinoamérica",
+                                             "español",
+                                             "community radio",
+                                             "local news",
+                                             "música en español"};
 
     if (!raw_tags.is_array()) {
         throw std::runtime_error("Received invalid data from API; expected a JSON array.");
@@ -149,10 +168,6 @@ void handle_curate_genre(const std::string& genre) {
         }
 
         std::string genre_filename = genre + ".jsonc";
-        std::string default_filename = "stations.jsonc";
-        std::string backup_filename = "stations.jsonc.bak";
-
-        // Write the fetched stations to the genre-specific file first
         std::ofstream o(genre_filename);
         o << std::setw(4) << stations_json << std::endl;
         o.close();
@@ -160,22 +175,14 @@ void handle_curate_genre(const std::string& genre) {
         std::cout << "Successfully fetched " << stations_json.size() << " station candidates." << std::endl;
         std::cout << "Saved to '" << genre_filename << "'." << std::endl;
 
-        // Backup existing stations.jsonc if it exists
-        rename(default_filename.c_str(), backup_filename.c_str());
-        // Rename our new genre file to what PersistenceManager expects
-        rename(genre_filename.c_str(), default_filename.c_str());
-
-        // Load the data back to pass to the CuratorApp
+        // Load the data directly from the newly created file.
         PersistenceManager persistence;
-        StationData candidates = persistence.loadStations();
+        StationData candidates = persistence.loadStations(genre_filename);
 
         suppress_stderr();
         CuratorApp app(genre, std::move(candidates));
         app.run();
 
-        // After curation, the final list is saved AS the genre file.
-        // So now we restore the original stations.jsonc
-        rename(backup_filename.c_str(), default_filename.c_str());
         std::cout << "\nCuration complete. Your curated list is in '" << genre_filename << "'." << std::endl;
         std::cout << "To use it, run: ./build/stream-hopper --from " << genre_filename << std::endl;
 
@@ -187,8 +194,10 @@ void handle_curate_genre(const std::string& genre) {
     }
 }
 
-
 int main(int argc, const char* argv[]) {
+    std::string station_file_to_load = "stations.jsonc"; // Default
+
+    // --- Command-line mode dispatcher ---
     if (argc > 1) {
         std::string arg = argv[1];
         if (arg == "--list-tags") {
@@ -204,6 +213,14 @@ int main(int argc, const char* argv[]) {
             }
             return 0;
         }
+        if (arg == "--from") {
+            if (argc > 2) {
+                station_file_to_load = argv[2];
+            } else {
+                std::cerr << "Error: --from flag requires a filename." << std::endl;
+                return 1;
+            }
+        }
     }
 
     // --- Default Player Mode ---
@@ -211,7 +228,7 @@ int main(int argc, const char* argv[]) {
 
     try {
         PersistenceManager persistence;
-        StationData station_data = persistence.loadStations();
+        StationData station_data = persistence.loadStations(station_file_to_load);
 
         StationManager manager(station_data);
         RadioPlayer player(manager);
