@@ -17,9 +17,6 @@ get_api_server() {
         exit 1
     fi
 
-    # The SRV record is the recommended way to discover servers.
-    # We shuffle the list to distribute the load. `awk` extracts the server name.
-    # The timeout for dig is set to 5 seconds.
     local servers
     servers=$(dig +short +time=5 SRV _api._tcp.radio-browser.info | awk '{print $4}' | shuf)
 
@@ -29,7 +26,6 @@ get_api_server() {
     fi
 
     for server in $servers; do
-        # Check if the server is reachable with a quick HEAD request (timeout 2s)
         if curl --head --silent --fail --max-time 2 "https://$server/json/stats" > /dev/null; then
             echo "https://$server"
             return 0
@@ -44,28 +40,64 @@ get_api_server() {
 # --- Function to list all tags ---
 # Fetches the raw JSON array of all tags from the API.
 list_tags() {
-    if ! command -v curl &> /dev/null; then
-        echo "Error: 'curl' is required. Please install it." >&2
+    local server
+    server=$(get_api_server)
+    if [ $? -ne 0 ]; then exit 1; fi
+
+    curl --silent --fail --user-agent "stream-hopper/1.0" "$server/json/tags"
+}
+
+# --- Function to fetch stations by genre ---
+# Fetches stations for a given tag, sorted by votes, and formats them
+# into the structure stream-hopper expects.
+fetch_by_genre() {
+    local genre="$1"
+    if [ -z "$genre" ]; then
+        echo "Error: A genre must be provided for --bygenre." >&2
+        exit 1
+    fi
+
+    if ! command -v jq &> /dev/null; then
+        echo "Error: 'jq' is required. Please install it to use this feature." >&2
         exit 1
     fi
 
     local server
     server=$(get_api_server)
-    if [ $? -ne 0 ]; then
-        # The error message from get_api_server has already been printed to stderr.
-        exit 1
-    fi
+    if [ $? -ne 0 ]; then exit 1; fi
 
-    # Fetch the raw tag data from the discovered server.
-    curl --silent --fail --user-agent "stream-hopper/1.0" "$server/json/tags"
+    # Fetch up to 100 working stations for the tag, sorted by votes.
+    # Then, use jq to filter and transform the data.
+    curl --silent --fail --user-agent "stream-hopper/1.0" \
+        "$server/json/stations/bytagexact/$genre?order=votes&reverse=true&hidebroken=true&limit=100" |
+    jq '
+        # Filter for entries with a valid url_resolved and a name that is not too long.
+        map(select(.url_resolved != "" and .url_resolved != null and (.name|length) < 40)) |
+        # Take the top 30 valid stations from the result.
+        .[0:30] |
+        # Transform each entry into the format required by stream-hopper.
+        map({
+            name: .name,
+            urls: [.url_resolved]
+        })
+    '
 }
 
-
 # --- Main script logic: argument parsing ---
-if [ "$1" = "--list-tags" ]; then
-    list_tags
-# Future functionality like --bygenre will be added here with 'elif'.
-else
-    echo "Usage: $0 --list-tags" >&2
+if [ -z "$1" ]; then
+    echo "Usage: $0 --list-tags | --bygenre <genre>" >&2
     exit 1
 fi
+
+case "$1" in
+    --list-tags)
+        list_tags
+        ;;
+    --bygenre)
+        fetch_by_genre "$2"
+        ;;
+    *)
+        echo "Usage: $0 --list-tags | --bygenre <genre>" >&2
+        exit 1
+        ;;
+esac

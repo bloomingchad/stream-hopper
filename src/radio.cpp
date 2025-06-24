@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cctype>
 #include <ctime>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <set>
@@ -103,8 +104,8 @@ void handle_list_tags() {
 
         if (raw_json_str.empty() || raw_json_str.rfind("Error:", 0) == 0) {
             std::cerr << "Error: Failed to fetch data from the helper script." << std::endl;
-            std::cerr << "Please check your internet connection and ensure 'curl' is installed." << std::endl;
-            if(!raw_json_str.empty()) {
+            std::cerr << "Please check your internet connection and ensure 'curl'/'dig' are installed." << std::endl;
+            if (!raw_json_str.empty()) {
                 std::cerr << "Script output: " << raw_json_str << std::endl;
             }
             return;
@@ -126,13 +127,56 @@ void handle_list_tags() {
     }
 }
 
+void handle_curate_genre(const std::string& genre) {
+    std::cout << "Fetching stations for genre: '" << genre << "'..." << std::endl;
+    try {
+        std::string command = "./build/api_helper.sh --bygenre \"" + genre + "\"";
+        std::string stations_json_str = exec_process(command.c_str());
+
+        if (stations_json_str.empty() || stations_json_str.rfind("Error:", 0) == 0) {
+            std::cerr << "Error: Failed to fetch stations from the helper script." << std::endl;
+             if (!stations_json_str.empty()) {
+                std::cerr << "Script output: " << stations_json_str << std::endl;
+            }
+            return;
+        }
+
+        // Validate that we got a valid JSON array
+        json stations_json = json::parse(stations_json_str);
+        if (!stations_json.is_array() || stations_json.empty()) {
+            std::cout << "No working stations found for the genre '" << genre << "'." << std::endl;
+            return;
+        }
+
+        std::string filename = genre + ".jsonc";
+        std::ofstream o(filename);
+        o << std::setw(4) << stations_json << std::endl;
+
+        std::cout << "Successfully fetched " << stations_json.size() << " station candidates." << std::endl;
+        std::cout << "Saved to '" << filename << "'." << std::endl;
+        std::cout << "\nInteractive curation mode will be implemented in the next step." << std::endl;
+
+    } catch (const std::exception& e) {
+        std::cerr << "\nAn error occurred during curation: " << e.what() << std::endl;
+    }
+}
+
+
 int main(int argc, char* argv[]) {
-    // --- Command-line mode dispatcher ---
     if (argc > 1) {
         std::string arg = argv[1];
         if (arg == "--list-tags") {
             handle_list_tags();
-            return 0; // Exit after handling the utility command.
+            return 0;
+        }
+        if (arg == "--curate") {
+            if (argc > 2) {
+                handle_curate_genre(argv[2]);
+            } else {
+                std::cerr << "Error: --curate flag requires a genre." << std::endl;
+                std::cerr << "Example: ./build/stream-hopper --curate techno" << std::endl;
+            }
+            return 0;
         }
     }
 
