@@ -13,7 +13,10 @@
 #include "RadioPlayer.h"
 #include "StationManager.h"
 
-// This function is now only used by Player mode.
+// A workaround for libmpv, which can sometimes print status or error
+// messages to stderr even when configured not to. This function redirects
+// the stderr file descriptor to /dev/null, silencing it completely for
+// the TUI modes.
 void suppress_stderr() {
     int dev_null = open("/dev/null", O_WRONLY);
     if (dev_null == -1) {
