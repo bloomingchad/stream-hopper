@@ -23,31 +23,67 @@ void suppress_stderr() {
     close(dev_null);
 }
 
+void print_help() {
+    std::cout << "stream-hopper: A terminal-based radio player and curator." << std::endl;
+    std::cout << "\nUSAGE:" << std::endl;
+    std::cout << "  ./build/stream-hopper [COMMAND]" << std::endl;
+    std::cout << "\nCOMMANDS:" << std::endl;
+    std::cout << "  (no command)         Launches the interactive radio player with 'stations.jsonc'." << std::endl;
+    std::cout << "  --from <file>        Launches the player with a specific station file." << std::endl;
+    std::cout << "  --curate <genre>     Starts an interactive session to curate stations for a genre." << std::endl;
+    std::cout << "  --list-tags          Lists popular, available genres from the Radio Browser API." << std::endl;
+    std::cout << "  --help, -h           Displays this help message." << std::endl;
+    std::cout << "\nEXAMPLE WORKFLOW:" << std::endl;
+    std::cout << "  1. Discover genres: ./build/stream-hopper --list-tags" << std::endl;
+    std::cout << "  2. Curate a list:   ./build/stream-hopper --curate techno" << std::endl;
+    std::cout << "  3. Play your list:  ./build/stream-hopper --from techno.jsonc" << std::endl;
+}
+
 int main(int argc, const char* argv[]) {
     // --- Command-line mode dispatcher ---
     if (argc > 1) {
         std::string arg = argv[1];
         CliHandler cli_handler;
 
+        if (arg == "--help" || arg == "-h") {
+            print_help();
+            return 0;
+        }
+
         if (arg == "--list-tags") {
             cli_handler.handle_list_tags();
             return 0;
         }
+
         if (arg == "--curate") {
             if (argc > 2) {
                 cli_handler.handle_curate_genre(argv[2]);
             } else {
                 std::cerr << "Error: --curate flag requires a genre." << std::endl;
-                std::cerr << "Example: ./build/stream-hopper --curate techno" << std::endl;
+                print_help();
             }
             return 0;
+        }
+
+        // The '--from' flag is handled below with the main player logic.
+        // If the arg is not '--from' and not a known command, it's an error.
+        if (arg != "--from") {
+             std::cerr << "Error: Unknown command '" << arg << "'." << std::endl;
+             print_help();
+             return 1;
         }
     }
 
     // --- Player Mode ---
     std::string station_file_to_load = "stations.jsonc";
-    if (argc > 2 && std::string(argv[1]) == "--from") {
-        station_file_to_load = argv[2];
+    if (argc > 1 && std::string(argv[1]) == "--from") {
+         if (argc > 2) {
+            station_file_to_load = argv[2];
+        } else {
+             std::cerr << "Error: --from flag requires a filename." << std::endl;
+             print_help();
+             return 1;
+        }
     }
 
     suppress_stderr();
