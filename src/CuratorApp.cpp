@@ -125,6 +125,13 @@ void CuratorApp::run() {
                 if (mpv_get_property(station->getMpvHandle(), "core-idle", MPV_FORMAT_FLAG, &buffering_flag) == 0) {
                     station->setBuffering(buffering_flag);
                 }
+                // Poll for the live bitrate from libmpv
+                int64_t bitrate_bps = 0;
+                if (mpv_get_property(station->getMpvHandle(), "audio-bitrate", MPV_FORMAT_INT64, &bitrate_bps) == 0) {
+                    if (bitrate_bps > 0) {
+                        station->setBitrate(static_cast<int>(bitrate_bps / 1000));
+                    }
+                }
             }
         }
 
@@ -144,10 +151,19 @@ void CuratorApp::run() {
             }
         }
 
-        const auto& current_candidate =
+        // Create a mutable copy of the candidate data to display
+        CuratorStation station_to_display =
             (m_current_index < (int) m_candidates.size()) ? m_candidates[m_current_index] : CuratorStation{};
 
-        m_ui->draw(m_genre, m_current_index, m_candidates.size(), m_kept_stations.size(), current_candidate,
+        // If the live station has a valid bitrate, override the stale API data
+        if (active_it != m_station_pool.end()) {
+            const auto& active_station = *active_it;
+            if (active_station->getBitrate() > 0) {
+                station_to_display.bitrate = active_station->getBitrate();
+            }
+        }
+
+        m_ui->draw(m_genre, m_current_index, m_candidates.size(), m_kept_stations.size(), station_to_display,
                    status_string);
 
         int ch = getch();
