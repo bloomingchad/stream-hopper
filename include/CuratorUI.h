@@ -2,6 +2,7 @@
 #define CURATORUI_H
 
 #include <string>
+#include <vector>
 
 #include "CuratorStation.h" // For CuratorStation struct
 
@@ -9,7 +10,7 @@ class CuratorUI {
   public:
     CuratorUI();
     ~CuratorUI();
-    // <<< FIX: Updated signature to take the whole CuratorStation object
+
     void draw(const std::string& genre,
               int current_index,
               int total_candidates,
@@ -17,8 +18,13 @@ class CuratorUI {
               const CuratorStation& station,
               const std::string& status);
 
+    // New method for feedback animations
+    void flash_feedback(bool is_keep);
+
   private:
     void init_colors();
+    void draw_progress_bar(int y, int x, int width, int current, int total);
+    std::string get_reliability_stars(int votes);
 };
 
 #endif // CURATORUI_H
