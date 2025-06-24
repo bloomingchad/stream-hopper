@@ -129,9 +129,12 @@ void CliHandler::handle_list_tags() {
 }
 
 void CliHandler::handle_curate_genre(const std::string& genre) {
+    // The 'genre' parameter is now the clean, human-readable version e.g., "top 40"
     std::cout << "Fetching stations for genre: '" << genre << "'..." << std::endl;
     try {
-        std::string command = "./build/api_helper.sh --bygenre \"" + genre + "\"";
+        // We URL-encode the genre only for the script, which needs e.g., "top%2040"
+        std::string encoded_genre = url_encode(genre, UrlEncodingStyle::PATH_PERCENT);
+        std::string command = "./build/api_helper.sh --bygenre \"" + encoded_genre + "\"";
         std::string stations_json_str = exec_process(command.c_str());
         if (stations_json_str.empty() || stations_json_str.rfind("Error:", 0) == 0) {
             std::cerr << "Error: Failed to fetch stations from the helper script." << std::endl;
@@ -145,6 +148,8 @@ void CliHandler::handle_curate_genre(const std::string& genre) {
             std::cout << "No working stations found for the genre '" << genre << "'." << std::endl;
             return;
         }
+
+        // We use the original, clean 'genre' for the filename, e.g., "top 40.jsonc"
         std::string genre_filename = genre + ".jsonc";
         std::ofstream o(genre_filename);
         o << std::setw(4) << stations_json << std::endl;
@@ -153,15 +158,15 @@ void CliHandler::handle_curate_genre(const std::string& genre) {
         std::cout << "Successfully fetched " << stations_json.size() << " station candidates." << std::endl;
 
         PersistenceManager persistence;
-        // <<< FIX: Correctly call the new method
         std::vector<CuratorStation> candidates = persistence.loadCurationCandidates(genre_filename);
 
         suppress_stderr();
+        // The CuratorApp also gets the clean 'genre' string for display purposes.
         CuratorApp app(genre, std::move(candidates));
         app.run();
 
         std::cout << "\nCuration complete. Your curated list is in '" << genre_filename << "'." << std::endl;
-        std::cout << "To use it, run: ./build/stream-hopper --from " << genre_filename << std::endl;
+        std::cout << "To use it, run: ./build/stream-hopper --from \"" << genre_filename << "\"" << std::endl;
     } catch (const std::exception& e) {
         if (stdscr != NULL && !isendwin()) {
             endwin();

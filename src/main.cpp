@@ -60,7 +60,15 @@ int main(int argc, const char* argv[]) {
 
         if (arg == "--curate") {
             if (argc > 2) {
-                cli_handler.handle_curate_genre(argv[2]);
+                std::string full_genre;
+                // Combine all arguments after '--curate' into a single string
+                for (int i = 2; i < argc; ++i) {
+                    full_genre += argv[i];
+                    if (i < argc - 1) {
+                        full_genre += " ";
+                    }
+                }
+                cli_handler.handle_curate_genre(full_genre);
             } else {
                 std::cerr << "Error: --curate flag requires a genre." << std::endl;
                 print_help();
