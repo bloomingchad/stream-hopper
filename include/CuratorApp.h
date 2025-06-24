@@ -1,6 +1,7 @@
 #ifndef CURATORAPP_H
 #define CURATORAPP_H
 
+#include <deque>
 #include <memory>
 #include <string>
 #include <vector>
@@ -17,9 +18,9 @@ class CuratorApp {
     void run();
 
   private:
-    void load_current_station();
-    void handle_input(int ch);
+    void update_preloaded_stations();
     void advance(bool keep_current);
+    void handle_input(int ch);
     void save_curated_list() const;
 
     std::string m_genre;
@@ -29,8 +30,9 @@ class CuratorApp {
     bool m_quit_flag;
 
     std::unique_ptr<CuratorUI> m_ui;
-    std::unique_ptr<RadioStream> m_active_station;
-    mpv_handle* m_mpv_ctx; // Shared mpv context for event handling
+    // We now manage a pool of streams for preloading
+    std::deque<std::unique_ptr<RadioStream>> m_station_pool;
+    static constexpr int PRELOAD_COUNT = 2; // Preload the next 2 stations
 };
 
 #endif // CURATORAPP_H
