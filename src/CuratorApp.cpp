@@ -177,6 +177,11 @@ void CuratorApp::run() {
 }
 
 void CuratorApp::save_curated_list() const {
+    // Only save the list if the user has kept at least one station.
+    if (m_kept_stations.empty()) {
+        return;
+    }
+
     std::string filename = m_genre + ".jsonc";
     json stations_json = json::array();
     for (const auto& station_data : m_kept_stations) {
@@ -188,5 +193,7 @@ void CuratorApp::save_curated_list() const {
     }
 
     std::ofstream o(filename);
-    o << std::setw(4) << stations_json << std::endl;
+    if (o.is_open()) {
+        o << std::setw(4) << stations_json << std::endl;
+    }
 }
