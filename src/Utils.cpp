@@ -1,8 +1,11 @@
 #include "Utils.h"
 
+#include <array>
+#include <cstdio>
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <stdexcept> // Required for std::runtime_error
 
@@ -76,4 +79,20 @@ bool execute_open_command(const std::string& url, std::string& error_message) {
     std::string full_cmd = open_command + " '" + url + "' &";
     system(full_cmd.c_str());
     return true;
+}
+
+// Executes a shell command and captures its stdout.
+// Throws a runtime_error on failure.
+std::string exec_process(const char* cmd) {
+    std::array<char, 128> buffer;
+    std::string result;
+    // The "2>&1" part redirects stderr to stdout, so we can capture error messages from the script.
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
+    if (!pipe) {
+        throw std::runtime_error("popen() failed!");
+    }
+    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+        result += buffer.data();
+    }
+    return result;
 }

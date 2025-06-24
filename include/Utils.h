@@ -18,5 +18,6 @@ enum class UrlEncodingStyle {
 
 std::string url_encode(const std::string& value, UrlEncodingStyle encoding_style);
 bool execute_open_command(const std::string& url, std::string& error_message);
+std::string exec_process(const char* cmd);
 
 #endif // UTILS_H
