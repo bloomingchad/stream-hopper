@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include "CuratorApp.h" // New include
 #include "PersistenceManager.h"
 #include "RadioPlayer.h"
 #include "StationManager.h"
@@ -99,7 +100,6 @@ std::vector<std::string> curate_tags(const json& raw_tags) {
 void handle_list_tags() {
     std::cout << "Fetching available genres from Radio Browser API..." << std::endl;
     try {
-        // We call the script from the build directory.
         std::string raw_json_str = exec_process("./build/api_helper.sh --list-tags");
 
         if (raw_json_str.empty() || raw_json_str.rfind("Error:", 0) == 0) {
@@ -135,13 +135,12 @@ void handle_curate_genre(const std::string& genre) {
 
         if (stations_json_str.empty() || stations_json_str.rfind("Error:", 0) == 0) {
             std::cerr << "Error: Failed to fetch stations from the helper script." << std::endl;
-             if (!stations_json_str.empty()) {
+            if (!stations_json_str.empty()) {
                 std::cerr << "Script output: " << stations_json_str << std::endl;
             }
             return;
         }
 
-        // Validate that we got a valid JSON array
         json stations_json = json::parse(stations_json_str);
         if (!stations_json.is_array() || stations_json.empty()) {
             std::cout << "No working stations found for the genre '" << genre << "'." << std::endl;
@@ -154,7 +153,14 @@ void handle_curate_genre(const std::string& genre) {
 
         std::cout << "Successfully fetched " << stations_json.size() << " station candidates." << std::endl;
         std::cout << "Saved to '" << filename << "'." << std::endl;
-        std::cout << "\nInteractive curation mode will be implemented in the next step." << std::endl;
+
+        // Load the data back to pass to the CuratorApp
+        PersistenceManager persistence;
+        StationData candidates = persistence.loadStations(); // This will now load the new file
+        
+        suppress_stderr(); // Suppress mpv/other errors for the TUI part
+        CuratorApp app(genre, std::move(candidates));
+        app.run();
 
     } catch (const std::exception& e) {
         std::cerr << "\nAn error occurred during curation: " << e.what() << std::endl;
@@ -171,7 +177,17 @@ int main(int argc, char* argv[]) {
         }
         if (arg == "--curate") {
             if (argc > 2) {
+                // For this to work, we must rename the default stations.jsonc before running
+                // so PersistenceManager loads the correct new file. This is a temporary hack.
+                std::string temp_name = "stations.jsonc.bak";
+                rename("stations.jsonc", temp_name.c_str());
+
                 handle_curate_genre(argv[2]);
+
+                // Rename it back
+                std::string genre_file = std::string(argv[2]) + ".jsonc";
+                rename(temp_name.c_str(), "stations.jsonc");
+                // In the future, we might rename the curated file to stations.jsonc automatically
             } else {
                 std::cerr << "Error: --curate flag requires a genre." << std::endl;
                 std::cerr << "Example: ./build/stream-hopper --curate techno" << std::endl;

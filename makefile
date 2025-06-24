@@ -10,8 +10,8 @@ LDLIBS = -lmpv -lncursesw -ltinfo
 TARGET = build/stream-hopper
 
 # Source files
-# We now use wildcard to automatically find all .cpp files in src and its subdirectories
-SRCS = $(shell find src -name '*.cpp')
+# Correctly find all .cpp files in src and any of its subdirectories.
+SRCS = $(shell find src -type f -name '*.cpp')
 
 # Object files
 # This replaces the 'src/' prefix with 'build/' and the '.cpp' suffix with '.o'

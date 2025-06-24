@@ -26,7 +26,10 @@ get_api_server() {
     fi
 
     for server in $servers; do
-        if curl --head --silent --fail --max-time 2 "https://$server/json/stats" > /dev/null; then
+        # Use a more robust check. Instead of --head, we attempt to download
+        # the first 0 bytes of a resource. This is a standard GET request
+        # that is less likely to be blocked, but still very fast.
+        if curl --silent --fail --max-time 3 --range 0-0 "https://$server/json/stats" > /dev/null; then
             echo "https://$server"
             return 0
         fi
@@ -66,16 +69,11 @@ fetch_by_genre() {
     server=$(get_api_server)
     if [ $? -ne 0 ]; then exit 1; fi
 
-    # Fetch up to 100 working stations for the tag, sorted by votes.
-    # Then, use jq to filter and transform the data.
     curl --silent --fail --user-agent "stream-hopper/1.0" \
         "$server/json/stations/bytagexact/$genre?order=votes&reverse=true&hidebroken=true&limit=100" |
     jq '
-        # Filter for entries with a valid url_resolved and a name that is not too long.
         map(select(.url_resolved != "" and .url_resolved != null and (.name|length) < 40)) |
-        # Take the top 30 valid stations from the result.
         .[0:30] |
-        # Transform each entry into the format required by stream-hopper.
         map({
             name: .name,
             urls: [.url_resolved]
