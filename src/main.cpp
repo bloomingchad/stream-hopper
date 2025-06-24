@@ -188,7 +188,7 @@ void handle_curate_genre(const std::string& genre) {
 }
 
 
-int main(int argc, char* argv[]) {
+int main(int argc, const char* argv[]) {
     if (argc > 1) {
         std::string arg = argv[1];
         if (arg == "--list-tags") {

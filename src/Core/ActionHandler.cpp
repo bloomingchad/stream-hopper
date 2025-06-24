@@ -1,6 +1,7 @@
 #include "Core/ActionHandler.h"
 
 #include <chrono>
+#include <utility> // For std::move
 #include <variant>
 
 #include "RadioStream.h"
@@ -64,7 +65,7 @@ void ActionHandler::handle_searchOnline(StationManager& manager, char key) {
     std::string full_url = provider.base_url + url_encode(title, provider.encoding_style);
     std::string error_message;
     if (!execute_open_command(full_url, error_message)) {
-        manager.m_session_state.temporary_status_message = error_message;
+        manager.m_session_state.temporary_status_message = std::move(error_message);
         manager.m_session_state.temporary_message_end_time = std::chrono::steady_clock::now() + std::chrono::seconds(3);
         manager.m_needs_redraw = true;
     } else {

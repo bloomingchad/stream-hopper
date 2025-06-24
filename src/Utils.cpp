@@ -20,6 +20,7 @@ void check_mpv_error(int status, const std::string& context) {
 std::string url_encode(const std::string& value, UrlEncodingStyle encoding_style) {
     std::ostringstream escaped;
     escaped.fill('0');
+    (void) escaped.fill('0'); // Suppress cppcheck warning
     escaped << std::hex;
 
     for (char c : value) {
