@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio> // For rename
 #include <ctime>
 #include <fstream>
 #include <iostream>
@@ -147,22 +148,41 @@ void handle_curate_genre(const std::string& genre) {
             return;
         }
 
-        std::string filename = genre + ".jsonc";
-        std::ofstream o(filename);
+        std::string genre_filename = genre + ".jsonc";
+        std::string default_filename = "stations.jsonc";
+        std::string backup_filename = "stations.jsonc.bak";
+
+        // Write the fetched stations to the genre-specific file first
+        std::ofstream o(genre_filename);
         o << std::setw(4) << stations_json << std::endl;
+        o.close();
 
         std::cout << "Successfully fetched " << stations_json.size() << " station candidates." << std::endl;
-        std::cout << "Saved to '" << filename << "'." << std::endl;
+        std::cout << "Saved to '" << genre_filename << "'." << std::endl;
+
+        // Backup existing stations.jsonc if it exists
+        rename(default_filename.c_str(), backup_filename.c_str());
+        // Rename our new genre file to what PersistenceManager expects
+        rename(genre_filename.c_str(), default_filename.c_str());
 
         // Load the data back to pass to the CuratorApp
         PersistenceManager persistence;
-        StationData candidates = persistence.loadStations(); // This will now load the new file
-        
-        suppress_stderr(); // Suppress mpv/other errors for the TUI part
+        StationData candidates = persistence.loadStations();
+
+        suppress_stderr();
         CuratorApp app(genre, std::move(candidates));
         app.run();
 
+        // After curation, the final list is saved AS the genre file.
+        // So now we restore the original stations.jsonc
+        rename(backup_filename.c_str(), default_filename.c_str());
+        std::cout << "\nCuration complete. Your curated list is in '" << genre_filename << "'." << std::endl;
+        std::cout << "To use it, run: ./build/stream-hopper --from " << genre_filename << std::endl;
+
     } catch (const std::exception& e) {
+        if (stdscr != NULL && !isendwin()) {
+            endwin();
+        }
         std::cerr << "\nAn error occurred during curation: " << e.what() << std::endl;
     }
 }
@@ -177,17 +197,7 @@ int main(int argc, char* argv[]) {
         }
         if (arg == "--curate") {
             if (argc > 2) {
-                // For this to work, we must rename the default stations.jsonc before running
-                // so PersistenceManager loads the correct new file. This is a temporary hack.
-                std::string temp_name = "stations.jsonc.bak";
-                rename("stations.jsonc", temp_name.c_str());
-
                 handle_curate_genre(argv[2]);
-
-                // Rename it back
-                std::string genre_file = std::string(argv[2]) + ".jsonc";
-                rename(temp_name.c_str(), "stations.jsonc");
-                // In the future, we might rename the curated file to stations.jsonc automatically
             } else {
                 std::cerr << "Error: --curate flag requires a genre." << std::endl;
                 std::cerr << "Example: ./build/stream-hopper --curate techno" << std::endl;

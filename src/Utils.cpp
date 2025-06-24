@@ -81,13 +81,23 @@ bool execute_open_command(const std::string& url, std::string& error_message) {
     return true;
 }
 
+// Custom deleter for FILE* from popen.
+struct PcloseDeleter {
+    void operator()(FILE* fp) const {
+        if (fp) {
+            pclose(fp);
+        }
+    }
+};
+
 // Executes a shell command and captures its stdout.
 // Throws a runtime_error on failure.
 std::string exec_process(const char* cmd) {
     std::array<char, 128> buffer;
     std::string result;
-    // The "2>&1" part redirects stderr to stdout, so we can capture error messages from the script.
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
+    // Redirect stderr to stdout to capture all output.
+    std::string command_with_redirect = std::string(cmd) + " 2>&1";
+    std::unique_ptr<FILE, PcloseDeleter> pipe(popen(command_with_redirect.c_str(), "r"));
     if (!pipe) {
         throw std::runtime_error("popen() failed!");
     }

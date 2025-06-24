@@ -11,7 +11,8 @@ class CuratorUI {
               int current_index,
               int total_candidates,
               int kept_count,
-              const std::string& station_name);
+              const std::string& station_name,
+              const std::string& status);
 
   private:
     void init_colors();
