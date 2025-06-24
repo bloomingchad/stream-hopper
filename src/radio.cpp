@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "PersistenceManager.h" // <-- New include
+#include "PersistenceManager.h"
 #include "RadioPlayer.h"
 #include "StationManager.h"
 
@@ -21,7 +21,22 @@ void suppress_stderr() {
     close(dev_null);
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+    // --- Command-line mode dispatcher ---
+    // Check if any special command-line modes have been requested.
+    // If so, handle them and exit. Otherwise, proceed to the TUI player.
+    if (argc > 1) {
+        std::string arg = argv[1];
+        if (arg == "--list-tags") {
+            std::cout << "Feature to list available genres will be implemented here." << std::endl;
+            // In future steps, this will call the API helper and process the tags.
+            return 0; // Exit after handling the utility command.
+        }
+        // Future flags like --curate and --from will go here.
+    }
+
+    // --- Default Player Mode ---
+    // If no command-line flags were handled, proceed to the normal TUI player.
     suppress_stderr();
 
     try {
