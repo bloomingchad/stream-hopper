@@ -6,18 +6,21 @@
 
 a terminal-based radio player for discovering new music through human-curated live streams. hop between stations, automatically log every song, and break the algorithm's hold on your musical taste.
 
-## 🧩 features
+## ✨ features
 
--   **⚡ instant station switching:** seamlessly hop between stations with smooth audio crossfades.
--   **✍️ external config:** manage your stations in a simple, comment-friendly `stations.jsonc` file.
--   **📝 automatic history:** every new song is logged to `radio_history.json` with a timestamp.
--   **⚙️ performance modes:** switch between `🍃 Balanced`, `🚀 Performance`, and `🎧 Focus` modes to manage resources.
--   **🤖 auto-hop discovery:** let the app cycle through stations for you for passive discovery.
--   **⭐ persistent favorites:** mark your favorite stations and they'll be saved for next time.
--   **🔗 multi-url fallbacks:** define multiple stream URLs per station and cycle them with `+`.
--   **🎨 responsive tui:** a polished `ncurses` interface that adapts to your terminal size.
+- **🎶 instant station switching:** seamlessly hop between stations with smooth audio crossfades
+- **📝 interactive curation:** review stations with rich metadata and save only the best
+- **🎛️ first-run wizard:** guided setup fetches fresh stations based on your favorite genres
+- **📊 rich metadata display:** see bitrate, country, tags, and ratings during curation
+- **🔍 advanced discovery:** fetch stations by genre and curate them interactively
+- **📋 multi-panel UI:** stations, now playing, and history in a clean ncurses interface
+- **⚡ performance modes:** Balanced, Performance, and Focus modes for different usage scenarios
+- **🤖 auto-hop discovery:** let the app cycle through stations for passive discovery
+- **💾 persistent favorites:** mark favorite stations saved between sessions
+- **🔄 multi-url fallbacks:** cycle between backup streams with `+`
+- **🖥️ responsive TUI:** adapts to terminal size with compact and full layouts
 
-## ⬇️ installation
+## ⚙️ installation
 
 you'll need a C++17 compiler, `make`, `pkg-config`, and the development libraries for `libmpv` and `ncurses`.
 
@@ -25,9 +28,9 @@ you'll need a C++17 compiler, `make`, `pkg-config`, and the development librarie
 | ----------------- | ---------------------------------------------------------------------- |
 | **Debian/Ubuntu** | `sudo apt install build-essential libmpv-dev libncursesw5-dev pkg-config` |
 | **Fedora/RHEL**   | `sudo dnf install gcc-c++ mpv-devel ncurses-devel pkg-config make`     |
-| **Arch Linux**    | `sudo pacman -s gcc make pkg-config mpv ncurses`                         |
+| **Arch Linux**    | `sudo pacman -S gcc make pkg-config mpv ncurses`                       |
 
-## 🛠️ build & run
+## 🚀 build & run
 
 1.  **compile the project**
     ```bash
@@ -38,34 +41,43 @@ you'll need a C++17 compiler, `make`, `pkg-config`, and the development librarie
     ./build/stream-hopper
     ```
 
-## controls
+New users will be guided through first-run setup to create a personalized station list.
 
-| key     | action                                                        |
-| :------ | :------------------------------------------------------------ |
-| `↑` / `↓` | navigate stations / scroll history                          |
-| `↵`     | mute / unmute the current station                           |
-| `a`     | toggle auto-hop mode                                          |
-| `p`     | cycle performance profiles (Balanced, Performance, Focus)     |
-| `f`     | toggle favorite for the current station                       |
-| `d`     | toggle audio ducking (temporarily lower volume)             |
-| `+`     | cycle to the next available stream URL for the station        |
-| `⇥`     | switch focus between Stations and History panels              |
-| `c`     | enter Copy Mode (pauses UI for safe text selection)           |
-| `q`     | quit                                                          |
+## 🎛️ controls
 
-## ⚙️ configuration
+### main player
+| key     | action                                      |
+| :------ | :------------------------------------------ |
+| `↑`/`↓` | navigate stations / scroll history          |
+| `⏎`     | mute/unmute current station                 |
+| `a`     | toggle auto-hop mode                        |
+| `p`     | cycle performance profiles                  |
+| `f`     | toggle favorite for current station         |
+| `d`     | toggle audio ducking (lower volume)         |
+| `+`     | cycle to next stream url for station        |
+| `⇥`     | switch focus between panels                 |
+| `c`     | enter copy mode (pause ui for selection)    |
+| `q`     | quit                                        |
 
-your personal setup lives in simple JSON files next to the executable:
+### 🗂️ curation mode
+| key     | action                                      |
+| :------ | :------------------------------------------ |
+| `k`     | keep station in final list                  |
+| `d`     | discard station                             |
+| `p`     | play/pause current station                  |
+| `q`     | save and exit curation                      |
 
--   `stations.jsonc`: **your station list.** this is the main file you'll edit.
--   `radio_history.json`: your complete, timestamped listening history.
--   `radio_favorites.json`: a list of your favorited station names.
--   `radio_session.json`: remembers the last station you were on.
+## 🛠️ configuration
 
-### ✏️ editing your station list
+### station management
+- `stations.jsonc`: Your main station list (generated by first-run wizard)
+- `[genre].jsonc`: Curated station lists (e.g., `techno.jsonc`)
+- `radio_history.json`: Timestamped listening history
+- `radio_favorites.json`: Your favorited stations
+- `radio_session.json`: Remembers last played station
 
-modify `stations.jsonc` to build your personal radio universe.
-
+### editing Stations
+example `stations.jsonc` with rich metadata:
 ```jsonc
 // stations.jsonc
 [
@@ -83,22 +95,23 @@ modify `stations.jsonc` to build your personal radio universe.
 ]
 ```
 
-## 🔧 technical details
+## 🏗️ technical highlights
 
--   **architecture:** thread-safe Actor Model with a unidirectional data flow.
--   **audio engine:** `libmpv`
--   **ui framework:** `ncurses` (with wide-character support)
--   **configuration:** `nlohmann/json` for persistence.
--   **concurrency:** modern C++ (`std::thread`, `std::mutex`, `std::condition_variable`).
--   **memory model:** RAII, smart pointers, and a clean ownership model.
+- **modern architecture:** actor model with unidirectional data flow
+- **audio engine:** libmpv with optimized streaming configuration
+- **ui framework:** ncursesw with full unicode/emoji support
+- **concurrency:** std::atomic, mutexes, and condition variables
+- **error handling:** comprehensive exception safety
+- **static analysis:** clean reports from cppcheck and flawfinder
 
 ## 🙏 acknowledgements
 
--   **[libmpv](https://mpv.io/)** - for the robust and powerful media playback engine.
--   **[ncurses](https://invisible-island.net/ncurses/)** - for the foundational terminal UI library.
--   **[nlohmann/json](https://github.com/nlohmann/json)** - for the excellent and easy-to-use JSON library.
--   **AI collaboration:** the architecture, code, and documentation were heavily shaped through conversation with large language models, primarily **Gemini 2.5 Pro** and **Claude 4 Sonnet**.
--   **all the radio stations** - for keeping real, human-curated music alive.
+- **[radio browser api](https://www.radio-browser.info/)** - for comprehensive station data
+- **[libmpv](https://mpv.io/)** - robust media playback engine
+- **[ncurses](https://invisible-island.net/ncurses/)** - terminal UI foundation
+- **[nlohmann/json](https://github.com/nlohmann/json)** - JSON persistence
+- **AI collaboration:** the architecture, code, and documentation were heavily shaped through conversation with large language models, primarily **Gemini 2.5 Pro** and **Claude 4 Sonnet**.
+- **all the radio stations** - for keeping real, human-curated music alive.
 
 ## 📜 license
 
