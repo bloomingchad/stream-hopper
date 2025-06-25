@@ -7,7 +7,7 @@
 #include "CuratorStation.h"
 
 class CuratorUI {
-  public:
+public:
     CuratorUI();
     ~CuratorUI();
 
@@ -15,14 +15,18 @@ class CuratorUI {
               int current_index,
               int total_candidates,
               int kept_count,
+              int discarded_count,
               const CuratorStation& station,
-              const std::string& status);
+              const std::string& status,
+              bool is_playing);
 
-  private:
+private:
     void init_colors();
     void draw_progress_bar(int y, int x, int width, int current, int total);
-    std::string get_reliability_stars(int votes);
-    std::string truncate_string(const std::string& str, int max_width); // ✅ Added helper
+    void draw_rating_stars(int votes);
+    std::string truncate_string(const std::string& str, int max_width);
+    void draw_tag_editor(int y, int x, const std::vector<std::string>& tags);
+    void draw_quality_pill(int y, int x, int bitrate);
 };
 
 #endif // CURATORUI_H

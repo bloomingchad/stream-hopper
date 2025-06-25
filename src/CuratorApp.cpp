@@ -3,10 +3,12 @@
 #include <mpv/client.h>
 #include <ncurses.h>
 
-#include <algorithm> // for std::find_if
+#include <algorithm>
 #include <fstream>
 #include <iomanip>
-#include <thread> // for sleep_for
+#include <thread>
+#include <cctype>
+#include <sstream>
 
 #include "CuratorUI.h"
 #include "Utils.h"
@@ -33,7 +35,7 @@ void CuratorApp::update_preloaded_stations() {
 
     for (int i = 0; i <= PRELOAD_COUNT; ++i) {
         int target_index = m_current_index + i;
-        if (target_index >= (int) m_candidates.size())
+        if (target_index >= static_cast<int>(m_candidates.size()))
             break;
 
         auto it = std::find_if(m_station_pool.begin(), m_station_pool.end(),
@@ -60,17 +62,75 @@ void CuratorApp::update_preloaded_stations() {
 }
 
 void CuratorApp::advance(bool keep_current) {
-    if (m_current_index < (int) m_candidates.size() && keep_current) {
+    // Save current position in history before moving
+    m_history.push_back(m_current_index);
+    
+    if (m_current_index < static_cast<int>(m_candidates.size()) && keep_current) {
         m_kept_stations.push_back(m_candidates[m_current_index]);
+    } else {
+        m_discarded_count++;
     }
 
     m_current_index++;
 
-    if (m_current_index >= (int) m_candidates.size()) {
+    if (m_current_index >= static_cast<int>(m_candidates.size())) {
         m_quit_flag = true;
         return;
     }
     update_preloaded_stations();
+}
+
+void CuratorApp::go_back() {
+    if (m_history.empty()) return;
+    
+    m_current_index = m_history.back();
+    m_history.pop_back();
+    
+    // Adjust counts if needed
+    if (!m_kept_stations.empty() && m_kept_stations.back().name == m_candidates[m_current_index].name) {
+        m_kept_stations.pop_back();
+    }
+    
+    update_preloaded_stations();
+}
+
+void CuratorApp::edit_tags() {
+    if (m_current_index >= static_cast<int>(m_candidates.size())) return;
+    
+    echo();  // Enable input echo
+    curs_set(1);  // Show cursor
+    
+    // Clear the bottom of the screen
+    int y = LINES - 2;
+    move(y, 0);
+    clrtoeol();
+    
+    // Prompt for new tags
+    mvprintw(y, 5, "Edit tags (comma separated): ");
+    refresh();
+    
+    char input[256];
+    getnstr(input, sizeof(input) - 1);
+    
+    noecho();  // Disable input echo
+    curs_set(0);  // Hide cursor
+    
+    // Process input
+    std::string new_tags(input);
+    if (!new_tags.empty()) {
+        std::istringstream ss(new_tags);
+        std::string tag;
+        m_candidates[m_current_index].tags.clear();
+        
+        while (std::getline(ss, tag, ',')) {
+            // Trim whitespace
+            tag.erase(0, tag.find_first_not_of(" \t"));
+            tag.erase(tag.find_last_not_of(" \t") + 1);
+            if (!tag.empty()) {
+                m_candidates[m_current_index].tags.push_back(tag);
+            }
+        }
+    }
 }
 
 void CuratorApp::handle_input(int ch) {
@@ -93,6 +153,14 @@ void CuratorApp::handle_input(int ch) {
     case 'D':
         advance(false);
         break;
+    case 'b':
+    case 'B':
+        go_back();
+        break;
+    case 'e':
+    case 'E':
+        edit_tags();
+        break;
     case 'p':
     case 'P':
         if (active_station->isInitialized()) {
@@ -111,6 +179,8 @@ void CuratorApp::handle_input(int ch) {
 }
 
 void CuratorApp::run() {
+    bool is_playing = true;
+    
     while (!m_quit_flag) {
         for (const auto& station : m_station_pool) {
             if (station && station->isInitialized()) {
@@ -132,6 +202,11 @@ void CuratorApp::run() {
                         station->setBitrate(static_cast<int>(bitrate_bps / 1000));
                     }
                 }
+                
+                // Check if we're playing
+                if (station->getID() == m_current_index) {
+                    is_playing = (station->getPlaybackState() == PlaybackState::Playing);
+                }
             }
         }
 
@@ -147,13 +222,14 @@ void CuratorApp::run() {
                 status_string = active_station->getCurrentTitle();
             }
             if (active_station->getPlaybackState() == PlaybackState::Muted) {
-                status_string = "🔇 Muted";
+                status_string = "Muted";
             }
         }
 
         // Create a mutable copy of the candidate data to display
         CuratorStation station_to_display =
-            (m_current_index < (int) m_candidates.size()) ? m_candidates[m_current_index] : CuratorStation{};
+            (m_current_index < static_cast<int>(m_candidates.size())) ? 
+            m_candidates[m_current_index] : CuratorStation{};
 
         // If the live station has a valid bitrate, override the stale API data
         if (active_it != m_station_pool.end()) {
@@ -163,8 +239,9 @@ void CuratorApp::run() {
             }
         }
 
-        m_ui->draw(m_genre, m_current_index, m_candidates.size(), m_kept_stations.size(), station_to_display,
-                   status_string);
+        m_ui->draw(m_genre, m_current_index, m_candidates.size(), 
+                  m_kept_stations.size(), m_discarded_count,
+                  station_to_display, status_string, is_playing);
 
         int ch = getch();
         if (ch != ERR) {
@@ -189,6 +266,12 @@ void CuratorApp::save_curated_list() const {
         json station_obj;
         station_obj["name"] = station_data.name;
         station_obj["urls"] = station_data.urls;
+        
+        // Save custom tags if they were edited
+        if (!station_data.tags.empty()) {
+            station_obj["tags"] = station_data.tags;
+        }
+        
         stations_json.push_back(station_obj);
     }
 

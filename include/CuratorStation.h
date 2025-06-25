@@ -12,6 +12,7 @@ struct CuratorStation {
     int bitrate = 0;
     int votes = 0;
     std::vector<std::string> tags;
+    std::string format = "MP3"; // Added format information
 };
 
 #endif // CURATORSTATION_H
