@@ -49,10 +49,9 @@ void StationManager::loadSearchProviders() {
                 else if (style_str == "bandcamp_special")
                     style = UrlEncodingStyle::BANDCAMP_SPECIAL;
 
-                SearchProvider p = {.name = entry.at("name").get<std::string>(),
-                                    .key = key_str[0],
-                                    .base_url = entry.at("base_url").get<std::string>(),
-                                    .encoding_style = style};
+                // FIX: Replaced C++20 designated initializers with C++17 aggregate initialization
+                SearchProvider p{entry.at("name").get<std::string>(), key_str[0],
+                                 entry.at("base_url").get<std::string>(), style};
                 m_search_providers[p.key] = p;
             }
         }
@@ -147,18 +146,19 @@ StateSnapshot StationManager::createSnapshot() const {
     snapshot.temporary_status_message = m_session_state.temporary_status_message;
     snapshot.stations.reserve(m_stations.size());
     for (const auto& station : m_stations) {
-        snapshot.stations.push_back({.name = station.getName(),
-                                     .current_title = station.getCurrentTitle(),
-                                     .bitrate = station.getBitrate(),
-                                     .current_volume = station.getCurrentVolume(),
-                                     .is_initialized = station.isInitialized(),
-                                     .is_favorite = station.isFavorite(),
-                                     .is_buffering = station.isBuffering(),
-                                     .playback_state = station.getPlaybackState(),
-                                     .cycling_state = station.getCyclingState(),
-                                     .pending_title = station.getPendingTitle(),
-                                     .pending_bitrate = station.getPendingBitrate(),
-                                     .url_count = station.getAllUrls().size()});
+        // FIX: Replaced C++20 designated initializers with C++17 aggregate initialization
+        snapshot.stations.push_back({station.getName(),
+                                     station.getCurrentTitle(),
+                                     station.getBitrate(),
+                                     station.getCurrentVolume(),
+                                     station.isInitialized(),
+                                     station.isFavorite(),
+                                     station.isBuffering(),
+                                     station.getPlaybackState(),
+                                     station.getCyclingState(),
+                                     station.getPendingTitle(),
+                                     station.getPendingBitrate(),
+                                     station.getAllUrls().size()});
     }
     snapshot.current_volume_for_header = 0.0;
     if (!snapshot.stations.empty()) {
@@ -289,13 +289,9 @@ void StationManager::fadeAudio(int station_id, double to_vol, int duration_ms, b
     if (!handle)
         return;
 
-    m_active_fades.push_back({.station_id = station_id,
-                              .generation = station.getGeneration(),
-                              .start_vol = for_pending ? 0.0 : station.getCurrentVolume(),
-                              .target_vol = to_vol,
-                              .start_time = std::chrono::steady_clock::now(),
-                              .duration_ms = duration_ms,
-                              .is_for_pending_instance = for_pending});
+    // FIX: Replaced C++20 designated initializers with C++17 aggregate initialization
+    m_active_fades.push_back({station_id, station.getGeneration(), for_pending ? 0.0 : station.getCurrentVolume(),
+                              to_vol, std::chrono::steady_clock::now(), duration_ms, for_pending});
 }
 
 void StationManager::updateActiveWindow() {

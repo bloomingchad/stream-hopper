@@ -5,6 +5,7 @@
 #include <stdexcept> // For std::runtime_error
 
 #include "RadioStream.h" // For RadioStream definition in saveFavorites
+#include "nlohmann/json.hpp"
 
 using nlohmann::json;
 
@@ -55,42 +56,20 @@ StationData PersistenceManager::loadStations(const std::string& filename) const 
     return station_data;
 }
 
-std::vector<CuratorStation> PersistenceManager::loadCurationCandidates(const std::string& filename) const {
-    std::ifstream i(filename);
-    if (!i.is_open()) {
-        throw std::runtime_error("Could not open curation file: " + filename);
+void PersistenceManager::saveSimpleStationList(const std::string& filename,
+                                               const std::vector<CuratorStation>& stations) const {
+    json stations_json = json::array();
+    for (const auto& station_data : stations) {
+        json station_obj;
+        station_obj["name"] = station_data.name;
+        station_obj["urls"] = station_data.urls;
+        stations_json.push_back(station_obj);
     }
 
-    std::vector<CuratorStation> candidates;
-    try {
-        json stations_json = json::parse(i, nullptr, true, true);
-        if (!stations_json.is_array()) {
-            throw std::runtime_error(filename + " must contain a top-level JSON array.");
-        }
-        for (const auto& entry : stations_json) {
-            CuratorStation station;
-            station.name = entry.value("name", "Unknown");
-            station.country_code = entry.value("countrycode", "N/A");
-            station.bitrate = entry.value("bitrate", 0);
-            station.votes = entry.value("votes", 0);
-            if (entry.contains("urls") && entry["urls"].is_array()) {
-                for (const auto& url : entry["urls"]) {
-                    station.urls.push_back(url.get<std::string>());
-                }
-            }
-            if (entry.contains("tags") && entry["tags"].is_array()) {
-                for (const auto& tag : entry["tags"]) {
-                    station.tags.push_back(tag.get<std::string>());
-                }
-            }
-            if (!station.name.empty() && !station.urls.empty()) {
-                candidates.push_back(station);
-            }
-        }
-    } catch (const json::parse_error& e) {
-        throw std::runtime_error("Failed to parse " + filename + ": " + std::string(e.what()));
+    std::ofstream o(filename);
+    if (o.is_open()) {
+        o << std::setw(4) << stations_json << std::endl;
     }
-    return candidates;
 }
 
 json PersistenceManager::loadHistory() const {

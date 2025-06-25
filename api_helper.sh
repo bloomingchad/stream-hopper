@@ -1,8 +1,7 @@
 #!/bin/bash
-
 # A helper script to interact with the Radio Browser API.
-# It handles server discovery and fetching raw data.
-# Dependencies: curl, dig, shuf, jq
+# Its ONLY job is to find a working server and fetch raw data from a given URL path.
+# All logic and parsing is handled by the C++ application.
 
 set -e # Exit immediately if a command exits with a non-zero status.
 
@@ -15,7 +14,8 @@ get_api_server() {
     fi
 
     local servers
-    servers=$(dig +short +time=5 SRV _api._tcp.radio-browser.info | awk '{print $4}' | shuf)
+    # Use HTTP for now as some servers might not have valid HTTPS certs on IP addresses
+    servers=$(dig +short all.api.radio-browser.info | shuf)
 
     if [ -z "$servers" ]; then
         echo "Error: Could not resolve any Radio Browser API servers via DNS." >&2
@@ -23,8 +23,9 @@ get_api_server() {
     fi
 
     for server in $servers; do
-        if curl --silent --fail --max-time 3 --range 0-0 "https://$server/json/stats" > /dev/null; then
-            echo "https://$server"
+        # Use a short timeout to quickly skip unresponsive servers
+        if curl --silent --fail --max-time 3 "http://${server}/json/stats" > /dev/null; then
+            echo "http://${server}"
             return 0
         fi
     done
@@ -33,68 +34,22 @@ get_api_server() {
     return 1
 }
 
-
-# --- Function to list all tags ---
-list_tags() {
-    local server
-    server=$(get_api_server)
-    if [ $? -ne 0 ]; then exit 1; fi
-
-    curl --silent --fail --user-agent "stream-hopper/1.0" "$server/json/tags"
-}
-
-# --- Function to fetch stations by genre ---
-fetch_by_genre() {
-    local genre="$1"
-    if [ -z "$genre" ]; then
-        echo "Error: A genre must be provided for --bygenre." >&2
-        exit 1
-    fi
-
-    if ! command -v jq &> /dev/null; then
-        echo "Error: 'jq' is required. Please install it to use this feature." >&2
-        exit 1
-    fi
-
-    local server
-    server=$(get_api_server)
-    if [ $? -ne 0 ]; then exit 1; fi
-
-    # Fetch stations and use jq to transform the data into our required format.
-    curl --silent --fail --user-agent "stream-hopper/1.0" \
-        "$server/json/stations/bytagexact/$genre?order=votes&reverse=true&hidebroken=true&limit=100" |
-    jq '
-        # Filter for entries with a valid url_resolved and a name that is not too long.
-        map(select(.url_resolved != "" and .url_resolved != null and (.name|length) < 40)) |
-        # Take the top 30 valid stations from the result.
-        .[0:30] |
-        # Transform each entry into the richer format required by our new UI.
-        map({
-            name: .name,
-            urls: [.url_resolved],
-            countrycode: .countrycode,
-            bitrate: .bitrate,
-            votes: .votes,
-            tags: (.tags | split(",") | .[0:3]) # Take up to the first 3 tags
-        })
-    '
-}
-
-# --- Main script logic: argument parsing ---
+# --- Main script logic ---
 if [ -z "$1" ]; then
-    echo "Usage: $0 --list-tags | --bygenre <genre>" >&2
+    echo "Usage: $0 <url_path_and_query>" >&2
+    echo "Example: $0 /json/tags?order=stationcount&reverse=true" >&2
     exit 1
 fi
 
-case "$1" in
-    --list-tags)
-        list_tags
-        ;;
-    --bygenre)
-        fetch_by_genre "$2"
-        ;;
-    *)
-        echo "Usage: $0 --list-tags | --bygenre <genre>" >&2
-        exit 1
-        ;;
-esac
+API_SERVER=$(get_api_server)
+if [ $? -ne 0 ]; then
+    # Pass the error message from the function through
+    echo "$API_SERVER" >&2
+    exit 1
+fi
+
+URL_PATH_AND_QUERY="$1"
+
+# Fetch the data. The C++ app is responsible for building the query string.
+# -L handles redirects.
+curl --silent --fail --location --user-agent "stream-hopper/1.0" "${API_SERVER}${URL_PATH_AND_QUERY}"

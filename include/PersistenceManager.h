@@ -21,8 +21,7 @@ class PersistenceManager {
     PersistenceManager() = default;
 
     StationData loadStations(const std::string& filename) const;
-    // <<< FIX: The declaration must be here.
-    std::vector<CuratorStation> loadCurationCandidates(const std::string& filename) const;
+    void saveSimpleStationList(const std::string& filename, const std::vector<CuratorStation>& stations) const;
 
     // History Persistence
     nlohmann::json loadHistory() const;

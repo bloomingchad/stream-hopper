@@ -3,12 +3,14 @@
 #include <unistd.h>
 
 #include <ctime>
+#include <fstream> // Required for std::ifstream
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "CliHandler.h"
+#include "FirstRunWizard.h" // Include the new wizard
 #include "PersistenceManager.h"
 #include "RadioPlayer.h"
 #include "StationManager.h"
@@ -31,15 +33,17 @@ void print_help() {
     std::cout << "\nUSAGE:" << std::endl;
     std::cout << "  ./build/stream-hopper [COMMAND]" << std::endl;
     std::cout << "\nCOMMANDS:" << std::endl;
-    std::cout << "  (no command)         Launches the interactive radio player with 'stations.jsonc'." << std::endl;
+    std::cout << "  (no command)         Launches the interactive radio player." << std::endl;
+    std::cout << "                       If 'stations.jsonc' is not found, a setup wizard will run." << std::endl;
     std::cout << "  --from <file>        Launches the player with a specific station file." << std::endl;
     std::cout << "  --curate <genre>     Starts an interactive session to curate stations for a genre." << std::endl;
     std::cout << "  --list-tags          Lists popular, available genres from the Radio Browser API." << std::endl;
     std::cout << "  --help, -h           Displays this help message." << std::endl;
     std::cout << "\nEXAMPLE WORKFLOW:" << std::endl;
-    std::cout << "  1. Discover genres: ./build/stream-hopper --list-tags" << std::endl;
-    std::cout << "  2. Curate a list:   ./build/stream-hopper --curate techno" << std::endl;
-    std::cout << "  3. Play your list:  ./build/stream-hopper --from techno.jsonc" << std::endl;
+    std::cout << "  1. First Run:       ./build/stream-hopper (The setup wizard will run automatically)" << std::endl;
+    std::cout << "  2. Discover genres: ./build/stream-hopper --list-tags" << std::endl;
+    std::cout << "  3. Curate a list:   ./build/stream-hopper --curate techno" << std::endl;
+    std::cout << "  4. Play your list:  ./build/stream-hopper --from techno.jsonc" << std::endl;
 }
 
 int main(int argc, const char* argv[]) {
@@ -87,13 +91,29 @@ int main(int argc, const char* argv[]) {
 
     // --- Player Mode ---
     std::string station_file_to_load = "stations.jsonc";
+    bool is_default_file = true;
     if (argc > 1 && std::string(argv[1]) == "--from") {
         if (argc > 2) {
             station_file_to_load = argv[2];
+            is_default_file = false;
         } else {
             std::cerr << "Error: --from flag requires a filename." << std::endl;
             print_help();
             return 1;
+        }
+    }
+
+    // --- First Run Check ---
+    if (is_default_file) {
+        std::ifstream f(station_file_to_load);
+        if (!f.good()) {
+            FirstRunWizard wizard;
+            bool success = wizard.run();
+            if (!success) {
+                // The wizard's destructor will call endwin(), so we can print to std::cout
+                std::cout << "Setup cancelled. Exiting." << std::endl;
+                return 0;
+            }
         }
     }
 
