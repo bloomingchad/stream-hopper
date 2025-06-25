@@ -4,7 +4,7 @@
 #include <iomanip>
 #include <stdexcept> // For std::runtime_error
 
-#include "RadioStream.h" // For RadioStream definition in saveFavorites
+#include "RadioStream.h"
 #include "nlohmann/json.hpp"
 
 using nlohmann::json;
@@ -14,6 +14,41 @@ const std::string FAVORITES_FILENAME = "radio_favorites.json";
 const std::string SESSION_FILENAME = "radio_session.json";
 const std::string HISTORY_FILENAME = "radio_history.json";
 
+std::optional<std::pair<std::string, std::vector<std::string>>>
+PersistenceManager::parse_single_station_entry(const json& station_entry) const {
+    if (!station_entry.is_object() || !station_entry.contains("name") || !station_entry.contains("urls")) {
+        return std::nullopt; // Not a valid station object
+    }
+
+    const auto& name_json = station_entry["name"];
+    const auto& urls_json = station_entry["urls"];
+
+    if (!name_json.is_string() || !urls_json.is_array() || urls_json.empty()) {
+        return std::nullopt; // Invalid name or urls structure
+    }
+
+    std::string name = name_json.get<std::string>();
+    if (name.empty()) {
+        return std::nullopt; // Name cannot be empty
+    }
+
+    std::vector<std::string> urls;
+    for (const auto& url_entry : urls_json) {
+        if (url_entry.is_string()) {
+            std::string url_str = url_entry.get<std::string>();
+            if (!url_str.empty()) { // Ensure URL string is not empty
+                urls.push_back(url_str);
+            }
+        }
+    }
+
+    if (urls.empty()) {
+        return std::nullopt; // Must have at least one valid URL
+    }
+
+    return std::make_pair(name, urls);
+}
+
 StationData PersistenceManager::loadStations(const std::string& filename) const {
     std::ifstream i(filename);
     if (!i.is_open()) {
@@ -21,54 +56,42 @@ StationData PersistenceManager::loadStations(const std::string& filename) const 
                                  ". Please ensure the file exists in the same directory as the executable.");
     }
 
-    StationData station_data;
+    StationData station_data_list;
     try {
-        json stations_json = json::parse(i, nullptr, true, true);
-        if (!stations_json.is_array()) {
+        json root_json = json::parse(i, nullptr, true, true); // Allow comments
+        if (!root_json.is_array()) {
             throw std::runtime_error(filename + " must contain a top-level JSON array.");
         }
-        for (const auto& station_entry : stations_json) {
-            if (!station_entry.is_object() || !station_entry.contains("name") || !station_entry.contains("urls")) {
-                continue;
+        for (const auto& station_entry_json : root_json) {
+            if (auto parsed_station = parse_single_station_entry(station_entry_json)) {
+                station_data_list.push_back(*parsed_station);
             }
-            const auto& name_json = station_entry["name"];
-            const auto& urls_json = station_entry["urls"];
-            if (!name_json.is_string() || !urls_json.is_array() || urls_json.empty()) {
-                continue;
-            }
-            std::string name = name_json.get<std::string>();
-            std::vector<std::string> urls;
-            for (const auto& url_entry : urls_json) {
-                if (url_entry.is_string()) {
-                    urls.push_back(url_entry.get<std::string>());
-                }
-            }
-            if (!name.empty() && !urls.empty()) {
-                station_data.emplace_back(name, urls);
-            }
+            // If parse_single_station_entry returns nullopt, we silently skip the invalid entry.
+            // This makes loading more robust to malformed entries in user-provided files.
         }
     } catch (const json::parse_error& e) {
         throw std::runtime_error("Failed to parse " + filename + ": " + std::string(e.what()));
     }
-    if (station_data.empty()) {
+
+    if (station_data_list.empty()) {
         throw std::runtime_error(filename + " is empty or contains no valid station entries.");
     }
-    return station_data;
+    return station_data_list;
 }
 
 void PersistenceManager::saveSimpleStationList(const std::string& filename,
                                                const std::vector<CuratorStation>& stations) const {
-    json stations_json = json::array();
+    json stations_json_array = json::array();
     for (const auto& station_data : stations) {
         json station_obj;
         station_obj["name"] = station_data.name;
         station_obj["urls"] = station_data.urls;
-        stations_json.push_back(station_obj);
+        stations_json_array.push_back(station_obj);
     }
 
     std::ofstream o(filename);
     if (o.is_open()) {
-        o << std::setw(4) << stations_json << std::endl;
+        o << std::setw(4) << stations_json_array << std::endl;
     }
 }
 
@@ -82,6 +105,7 @@ json PersistenceManager::loadHistory() const {
                 return history_data;
             }
         } catch (...) {
+            // Silently ignore parse errors for history, return empty object
         }
     }
     return json::object();
@@ -106,7 +130,7 @@ std::unordered_set<std::string> PersistenceManager::loadFavoriteNames() const {
         if (!fav_names.is_array())
             return favorite_set;
     } catch (const json::parse_error&) {
-        return favorite_set;
+        return favorite_set; // Silently ignore parse errors
     }
 
     for (const auto& name_json : fav_names) {
@@ -143,6 +167,7 @@ std::optional<std::string> PersistenceManager::loadLastStationName() const {
             return session_data["last_station_name"].get<std::string>();
         }
     } catch (const json::parse_error&) {
+        // Silently ignore
     }
     return std::nullopt;
 }

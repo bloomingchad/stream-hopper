@@ -100,7 +100,9 @@ void FirstRunWizard::main_loop() {
     }
 }
 
-void FirstRunWizard::draw_message_screen(const std::string& line1, const std::string& line2, const std::string& line3,
+void FirstRunWizard::draw_message_screen(const std::string& line1,
+                                         const std::string& line2,
+                                         const std::string& line3,
                                          int delay_seconds) {
     clear();
     int y = (LINES / 2) - 2;
@@ -123,7 +125,7 @@ void FirstRunWizard::draw_message_screen(const std::string& line1, const std::st
 void FirstRunWizard::draw() {
     clear();
     int max_genres = GRID_COLS * GRID_ROWS;
-    if (max_genres > (int)m_available_genres.size()) {
+    if (max_genres > (int) m_available_genres.size()) {
         max_genres = m_available_genres.size();
     }
 
@@ -171,11 +173,10 @@ void FirstRunWizard::draw() {
 
 void FirstRunWizard::handle_input(int ch) {
     int max_genres = GRID_COLS * GRID_ROWS;
-     if (max_genres > (int)m_available_genres.size()) {
+    if (max_genres > (int) m_available_genres.size()) {
         max_genres = m_available_genres.size();
     }
     int max_rows = (max_genres + GRID_COLS - 1) / GRID_COLS;
-
 
     switch (ch) {
     case 'q':

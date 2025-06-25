@@ -23,7 +23,9 @@ class FirstRunWizard {
     void draw();
     void handle_input(int ch);
     bool perform_auto_curation();
-    void draw_message_screen(const std::string& line1, const std::string& line2 = "", const std::string& line3 = "",
+    void draw_message_screen(const std::string& line1,
+                             const std::string& line2 = "",
+                             const std::string& line3 = "",
                              int delay_seconds = 0);
 
     std::unique_ptr<CliHandler> m_cli_handler;

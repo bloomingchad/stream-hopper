@@ -10,15 +10,13 @@
 #include <vector>
 
 #include "CliHandler.h"
-#include "FirstRunWizard.h" // Include the new wizard
+#include "FirstRunWizard.h"
 #include "PersistenceManager.h"
 #include "RadioPlayer.h"
 #include "StationManager.h"
 
-// A workaround for libmpv, which can sometimes print status or error
-// messages to stderr even when configured not to. This function redirects
-// the stderr file descriptor to /dev/null, silencing it completely for
-// the TUI modes.
+// --- Utility Functions ---
+
 void suppress_stderr() {
     int dev_null = open("/dev/null", O_WRONLY);
     if (dev_null == -1) {
@@ -46,104 +44,147 @@ void print_help() {
     std::cout << "  4. Play your list:  ./build/stream-hopper --from techno.jsonc" << std::endl;
 }
 
-int main(int argc, const char* argv[]) {
-    // --- Command-line mode dispatcher ---
-    if (argc > 1) {
-        std::string arg = argv[1];
-        CliHandler cli_handler;
+void log_critical_error(const std::exception& e) {
+    if (stdscr != NULL && !isendwin()) {
+        endwin();
+    }
+    std::cout << "\n\nA critical error occurred during startup:\n" << e.what() << std::endl;
+    std::cout << "The application must close." << std::endl;
 
-        if (arg == "--help" || arg == "-h") {
-            print_help();
-            return 0;
-        }
+    FILE* logfile = fopen("stream_hopper_crash.log", "a");
+    if (logfile) {
+        time_t now = time(0);
+        char dt[30];
+        strftime(dt, sizeof(dt), "%Y-%m-%d %H:%M:%S", localtime(&now));
+        fprintf(logfile, "[%s] Critical Error: %s\n", dt, e.what());
+        fclose(logfile);
+    }
+}
 
-        if (arg == "--list-tags") {
-            cli_handler.handle_list_tags();
-            return 0;
-        }
+// --- Core Logic Functions ---
 
-        if (arg == "--curate") {
-            if (argc > 2) {
-                std::string full_genre;
-                // Combine all arguments after '--curate' into a single string
-                for (int i = 2; i < argc; ++i) {
-                    full_genre += argv[i];
-                    if (i < argc - 1) {
-                        full_genre += " ";
-                    }
-                }
-                cli_handler.handle_curate_genre(full_genre);
-            } else {
-                std::cerr << "Error: --curate flag requires a genre." << std::endl;
-                print_help();
-            }
-            return 0;
-        }
-
-        // The '--from' flag is handled below with the main player logic.
-        // If the arg is not '--from' and not a known command, it's an error.
-        if (arg != "--from") {
-            std::cerr << "Error: Unknown command '" << arg << "'." << std::endl;
-            print_help();
-            return 1;
-        }
+// Handles CLI commands that cause the program to exit immediately.
+// Returns true if a command was handled, false otherwise.
+bool handle_cli_commands(int argc, const char* argv[]) {
+    if (argc <= 1) {
+        return false; // No command, proceed to player mode
     }
 
-    // --- Player Mode ---
-    std::string station_file_to_load = "stations.jsonc";
-    bool is_default_file = true;
-    if (argc > 1 && std::string(argv[1]) == "--from") {
+    std::string arg = argv[1];
+    CliHandler cli_handler;
+
+    if (arg == "--help" || arg == "-h") {
+        print_help();
+        return true;
+    }
+
+    if (arg == "--list-tags") {
+        cli_handler.handle_list_tags();
+        return true;
+    }
+
+    if (arg == "--curate") {
         if (argc > 2) {
-            station_file_to_load = argv[2];
-            is_default_file = false;
-        } else {
-            std::cerr << "Error: --from flag requires a filename." << std::endl;
-            print_help();
-            return 1;
-        }
-    }
-
-    // --- First Run Check ---
-    if (is_default_file) {
-        std::ifstream f(station_file_to_load);
-        if (!f.good()) {
-            FirstRunWizard wizard;
-            bool success = wizard.run();
-            if (!success) {
-                // The wizard's destructor will call endwin(), so we can print to std::cout
-                std::cout << "Setup cancelled. Exiting." << std::endl;
-                return 0;
+            std::string full_genre;
+            for (int i = 2; i < argc; ++i) {
+                full_genre += argv[i];
+                if (i < argc - 1) {
+                    full_genre += " ";
+                }
             }
+            cli_handler.handle_curate_genre(full_genre);
+        } else {
+            std::cerr << "Error: --curate flag requires a genre." << std::endl;
+            print_help();
+        }
+        return true; // Even if --curate had an error, it's a CLI command that should exit.
+    }
+    return false; // Not an immediate-exit command
+}
+
+// Determines the station file to load.
+// Returns the filename. If an unknown command or misused --from is detected,
+// it prints help and returns an empty string to signal main() to exit with error.
+std::string determine_station_file(int argc, const char* argv[]) {
+    std::string station_file = "stations.jsonc"; // Default
+
+    if (argc > 1) {
+        std::string arg1 = argv[1];
+        if (arg1 == "--from") {
+            if (argc > 2) {
+                station_file = argv[2];
+            } else {
+                std::cerr << "Error: --from flag requires a filename." << std::endl;
+                print_help();
+                return ""; // Indicate error
+            }
+        } else if (arg1 != "--help" && arg1 != "-h" && arg1 != "--list-tags" && arg1 != "--curate") {
+            // This case handles an unknown first argument that isn't '--from'
+            // and wasn't caught by handle_cli_commands (which implies it was a standalone unknown command)
+            std::cerr << "Error: Unknown command '" << arg1 << "'." << std::endl;
+            print_help();
+            return ""; // Indicate error
+        }
+        // If arg1 was --help, --list-tags, or --curate, handle_cli_commands would have returned true,
+        // and we wouldn't reach here.
+    }
+    return station_file;
+}
+
+// Runs the First-Run Wizard if the station_file (expected to be default) doesn't exist.
+// Returns false if the wizard was run and cancelled/failed, true otherwise.
+bool run_first_run_wizard_if_needed(const std::string& station_file) {
+    std::ifstream f(station_file);
+    if (!f.good()) { // File doesn't exist
+        FirstRunWizard wizard;
+        bool success = wizard.run();
+        if (!success) {
+            // Wizard's destructor calls endwin(), so std::cout is safe here.
+            std::cout << "Setup cancelled. Exiting." << std::endl;
+            return false;
+        }
+    }
+    return true;
+}
+
+// Sets up and runs the main radio player.
+void run_player(const std::string& station_file) {
+    PersistenceManager persistence;
+    StationData station_data = persistence.loadStations(station_file); // Can throw if file is invalid
+
+    StationManager manager(station_data); // Can throw if station_data is empty
+    RadioPlayer player(manager);
+    player.run();
+}
+
+// --- Main Entry Point ---
+int main(int argc, const char* argv[]) {
+    // 1. Handle dedicated CLI commands that exit immediately (e.g., --help, --list-tags, --curate)
+    if (handle_cli_commands(argc, argv)) {
+        return 0; // CLI command was handled and app should exit (or already printed error).
+    }
+
+    // 2. Determine which station file to load (default or from --from)
+    //    This also handles errors for unknown commands or misused --from.
+    std::string station_file_to_load = determine_station_file(argc, argv);
+    if (station_file_to_load.empty()) {
+        return 1; // Error message and help already printed by determine_station_file.
+    }
+
+    // 3. Run the First-Run Wizard ONLY if we are trying to load the default "stations.jsonc"
+    //    and it doesn't exist. If --from is used, we bypass the wizard.
+    if (station_file_to_load == "stations.jsonc") {
+        if (!run_first_run_wizard_if_needed(station_file_to_load)) {
+            return 0; // Wizard was cancelled or failed.
         }
     }
 
+    // 4. Suppress stderr for TUI mode and run the main player
     suppress_stderr();
-
     try {
-        PersistenceManager persistence;
-        StationData station_data = persistence.loadStations(station_file_to_load);
-
-        StationManager manager(station_data);
-        RadioPlayer player(manager);
-
-        player.run();
-
+        run_player(station_file_to_load);
     } catch (const std::exception& e) {
-        if (stdscr != NULL && !isendwin()) {
-            endwin();
-        }
-
-        std::cout << "\n\nA critical error occurred during startup:\n" << e.what() << std::endl;
-        std::cout << "The application must close." << std::endl;
-
-        FILE* logfile = fopen("stream_hopper_crash.log", "a");
-        if (logfile) {
-            time_t now = time(0);
-            char dt[30];
-            strftime(dt, sizeof(dt), "%Y-%m-%d %H:%M:%S", localtime(&now));
-            fprintf(logfile, "[%s] Critical Error: %s\n", dt, e.what());
-            fclose(logfile);
-        }
+        log_critical_error(e);
         return 1;
     }
 

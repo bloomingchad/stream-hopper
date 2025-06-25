@@ -32,7 +32,7 @@ namespace {
             CuratorStation station;
             station.name = entry.value("name", "Unknown");
             if (entry.contains("url_resolved") && !entry.at("url_resolved").is_null()) {
-                 station.urls.push_back(entry.at("url_resolved").get<std::string>());
+                station.urls.push_back(entry.at("url_resolved").get<std::string>());
             }
             station.votes = entry.value("votes", 0);
 
@@ -45,40 +45,92 @@ namespace {
 
     std::string normalize_tag(std::string tag) {
         std::transform(tag.begin(), tag.end(), tag.begin(), [](unsigned char c) { return std::tolower(c); });
-        if (tag == "dnb" || tag == "drum and bass" || tag == "drum & bass") return "drum and bass";
-        if (tag == "hip-hop" || tag == "hiphop") return "hip hop";
-        if (tag == "80's" || tag == "1980s" || tag == "80er") return "80s";
-        if (tag == "90's" || tag == "1990s" || tag == "90er") return "90s";
-        if (tag == "pop music" || tag == "música pop" || tag == "pop en español e inglés") return "pop";
+        if (tag == "dnb" || tag == "drum and bass" || tag == "drum & bass")
+            return "drum and bass";
+        if (tag == "hip-hop" || tag == "hiphop")
+            return "hip hop";
+        if (tag == "80's" || tag == "1980s" || tag == "80er")
+            return "80s";
+        if (tag == "90's" || tag == "1990s" || tag == "90er")
+            return "90s";
+        if (tag == "pop music" || tag == "música pop" || tag == "pop en español e inglés")
+            return "pop";
         return tag;
     }
 
     std::vector<std::string> curate_tags(const json& raw_tags) {
         const std::set<std::string> blacklist = {
-            "aac", "mp3", "ogg", "flac", "wma", "streaming", "internet radio", "aac+", "online radio", "shoutcast",
-            "icecast", "music", "radio", "fm", "news", "talk", "live", "free", "online", "hits", "musica", "noticias",
-            "various", "misc", "entertainment", "am", "estación", "méxico", "norteamérica", "música", "pop rock",
-            "latinoamérica", "español", "community radio", "local news", "música en español", "best", "top", "all",
-            "hd", "web", "webradio", "abc", "quality", "1", "international", "world",
+            "aac",
+            "mp3",
+            "ogg",
+            "flac",
+            "wma",
+            "streaming",
+            "internet radio",
+            "aac+",
+            "online radio",
+            "shoutcast",
+            "icecast",
+            "music",
+            "radio",
+            "fm",
+            "news",
+            "talk",
+            "live",
+            "free",
+            "online",
+            "hits",
+            "musica",
+            "noticias",
+            "various",
+            "misc",
+            "entertainment",
+            "am",
+            "estación",
+            "méxico",
+            "norteamérica",
+            "música",
+            "pop rock",
+            "latinoamérica",
+            "español",
+            "community radio",
+            "local news",
+            "música en español",
+            "best",
+            "top",
+            "all",
+            "hd",
+            "web",
+            "webradio",
+            "abc",
+            "quality",
+            "1",
+            "international",
+            "world",
         };
         if (!raw_tags.is_array()) {
             return {};
         }
-        
+
         std::vector<std::string> final_list;
         std::set<std::string> added_normalized_tags;
 
         for (const auto& tag_obj : raw_tags) {
-             if (!tag_obj.is_object() || !tag_obj.contains("name") || !tag_obj.contains("stationcount")) continue;
+            if (!tag_obj.is_object() || !tag_obj.contains("name") || !tag_obj.contains("stationcount"))
+                continue;
             std::string name = tag_obj["name"].get<std::string>();
             int count = tag_obj["stationcount"].get<int>();
 
-            if (count < 50) continue;
-            if (name.length() < 3 || name.length() > 25) continue;
+            if (count < 50)
+                continue;
+            if (name.length() < 3 || name.length() > 25)
+                continue;
 
             std::string normalized = normalize_tag(name);
-            if(blacklist.count(normalized)) continue;
-            if(added_normalized_tags.count(normalized)) continue;
+            if (blacklist.count(normalized))
+                continue;
+            if (added_normalized_tags.count(normalized))
+                continue;
 
             final_list.push_back(name);
             added_normalized_tags.insert(normalized);
@@ -88,7 +140,8 @@ namespace {
 
     void suppress_stderr() {
         int dev_null = open("/dev/null", O_WRONLY);
-        if (dev_null == -1) return;
+        if (dev_null == -1)
+            return;
         dup2(dev_null, 2);
         close(dev_null);
     }
@@ -133,7 +186,8 @@ void CliHandler::handle_list_tags() {
 std::vector<CuratorStation> CliHandler::get_curation_candidates(const std::string& genre) {
     try {
         std::string encoded_genre = url_encode(genre, UrlEncodingStyle::PATH_PERCENT);
-        std::string path = "/json/stations/bytag/" + encoded_genre + "?order=votes&reverse=true&hidebroken=true&limit=100";
+        std::string path =
+            "/json/stations/bytag/" + encoded_genre + "?order=votes&reverse=true&hidebroken=true&limit=100";
         std::string command = "./build/api_helper.sh '" + path + "'";
         std::string stations_json_str = exec_process(command.c_str());
 
@@ -144,7 +198,8 @@ std::vector<CuratorStation> CliHandler::get_curation_candidates(const std::strin
         json stations_json = json::parse(stations_json_str);
         return parse_station_candidates(stations_json);
     } catch (const std::exception& e) {
-        std::cerr << "\nAn error occurred while fetching stations for genre '" << genre << "': " << e.what() << std::endl;
+        std::cerr << "\nAn error occurred while fetching stations for genre '" << genre << "': " << e.what()
+                  << std::endl;
         return {};
     }
 }

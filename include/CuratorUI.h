@@ -7,7 +7,7 @@
 #include "CuratorStation.h"
 
 class CuratorUI {
-public:
+  public:
     CuratorUI();
     ~CuratorUI();
 
@@ -20,7 +20,7 @@ public:
               const std::string& status,
               bool is_playing);
 
-private:
+  private:
     void init_colors();
     void draw_progress_bar(int y, int x, int width, int current, int total);
     void draw_rating_stars(int votes);

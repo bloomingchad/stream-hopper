@@ -7,7 +7,7 @@
 #include <utility> // For std::pair
 #include <vector>
 
-#include "CuratorStation.h" // <<< THIS IS THE KEY
+#include "CuratorStation.h"
 #include "nlohmann/json.hpp"
 
 // Forward declaration
@@ -34,6 +34,11 @@ class PersistenceManager {
     // Session Persistence
     std::optional<std::string> loadLastStationName() const;
     void saveSession(const std::string& last_station_name) const;
+
+  private:
+    // Helper to parse a single station entry from the JSON array
+    std::optional<std::pair<std::string, std::vector<std::string>>>
+    parse_single_station_entry(const nlohmann::json& station_entry) const;
 };
 
 #endif // PERSISTENCEMANAGER_H
