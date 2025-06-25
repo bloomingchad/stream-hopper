@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "CuratorStation.h" // For CuratorStation struct
+#include "CuratorStation.h"
 
 class CuratorUI {
   public:
@@ -18,13 +18,11 @@ class CuratorUI {
               const CuratorStation& station,
               const std::string& status);
 
-    // New method for feedback animations
-    void flash_feedback(bool is_keep);
-
   private:
     void init_colors();
     void draw_progress_bar(int y, int x, int width, int current, int total);
     std::string get_reliability_stars(int votes);
+    std::string truncate_string(const std::string& str, int max_width); // ✅ Added helper
 };
 
 #endif // CURATORUI_H
