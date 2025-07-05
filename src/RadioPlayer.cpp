@@ -22,6 +22,7 @@ RadioPlayer::RadioPlayer(StationManager& manager) : m_station_manager(manager) {
         {KEY_UP, Msg::NavigateUp{}},
         {KEY_DOWN, Msg::NavigateDown{}},
         {KEY_ENTER, Msg::ToggleMute{}},
+        {' ', Msg::ToggleMute{}},
         {'\n', Msg::ToggleMute{}},
         {'\r', Msg::ToggleMute{}},
         {'a', Msg::ToggleAutoHop{}},
