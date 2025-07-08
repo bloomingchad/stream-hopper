@@ -5,6 +5,7 @@
 #include <variant>
 
 #include "Core/UpdateManager.h"
+#include "Core/VolumeNormalizer.h"
 #include "StationManager.h"
 
 namespace {
@@ -22,9 +23,13 @@ void SystemHandler::process_system(StationManager& manager, const StationManager
                 handle_updateAndPoll(manager);
             else if constexpr (std::is_same_v<T, Msg::Quit>)
                 handle_quit(manager);
+            else if constexpr (std::is_same_v<T, Msg::SaveVolumeOffsets>)
+                handle_saveVolumeOffsets(manager);
         },
         msg);
 }
+
+void SystemHandler::handle_saveVolumeOffsets(StationManager& manager) { manager.saveVolumeOffsetsToDisk(); }
 
 void SystemHandler::check_copy_mode_timeout(StationManager& manager) {
     if (manager.m_session_state.copy_mode_active) {

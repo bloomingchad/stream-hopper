@@ -43,6 +43,7 @@ UIManager::UIManager() : m_is_compact_mode(false) {
     init_pair(6, COLOR_WHITE, COLOR_GREEN);
     init_pair(7, COLOR_WHITE, COLOR_YELLOW);
     init_pair(8, COLOR_BLACK, -1);
+    init_pair(9, COLOR_YELLOW, -1); // For Volume Offset Bar
     signal(SIGWINCH, UIManager::resize_handler_trampoline);
     m_header_bar = std::make_unique<HeaderBar>();
     m_footer_bar = std::make_unique<FooterBar>();

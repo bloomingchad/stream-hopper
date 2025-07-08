@@ -16,6 +16,7 @@
 #include "Core/Message.h"
 #include "Core/PreloadStrategy.h"
 #include "Core/UpdateManager.h"
+#include "Core/VolumeNormalizer.h"
 #include "PersistenceManager.h"
 #include "RadioStream.h"
 #include "SessionState.h"
@@ -110,11 +111,15 @@ class StationManager {
     std::atomic<bool>& getNeedsRedrawFlag();
     std::atomic<bool>& getQuitFlag();
 
+    // Centralized volume logic to be called by handlers/managers
+    void applyCombinedVolume(int station_id, bool for_pending = false);
+
   private:
     friend class MpvEventHandler;
     friend class ActionHandler;
     friend class SystemHandler;
     friend class UpdateManager;
+    friend class VolumeNormalizer;
 
     void actorLoop();
     void pollMpvEvents();
@@ -126,6 +131,7 @@ class StationManager {
     void saveHistoryToDisk();
     void addHistoryEntry(const std::string& station_name, const nlohmann::json& entry);
     void loadSearchProviders(); // New method to load config
+    void saveVolumeOffsetsToDisk();
 
     struct ActiveFade {
         int station_id;
@@ -147,6 +153,7 @@ class StationManager {
     std::unique_ptr<ActionHandler> m_action_handler;
     std::unique_ptr<SystemHandler> m_system_handler;
     std::unique_ptr<UpdateManager> m_update_manager;
+    std::unique_ptr<VolumeNormalizer> m_volume_normalizer;
     std::unique_ptr<nlohmann::json> m_song_history;
     int m_unsaved_history_count;
     std::map<char, SearchProvider> m_search_providers; // Store config here

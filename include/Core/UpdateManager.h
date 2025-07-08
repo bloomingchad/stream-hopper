@@ -17,6 +17,7 @@ class UpdateManager {
     void handle_cycle_status_timers(StationManager& manager);
     void handle_cycle_timeouts(StationManager& manager);
     void handle_temporary_message_timer(StationManager& manager); // New handler
+    void handle_volume_normalizer_timeout(StationManager& manager);
 };
 
 #endif // UPDATEMANAGER_H

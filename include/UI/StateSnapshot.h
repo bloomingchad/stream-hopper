@@ -23,6 +23,7 @@ struct StationDisplayData {
     std::string pending_title;
     int pending_bitrate; // For displaying during URL cycle
     size_t url_count;
+    double volume_offset; // For normalization UI
 };
 
 // A struct to hold a guaranteed-consistent snapshot of ALL data needed for the UI.
@@ -38,7 +39,8 @@ struct StateSnapshot {
     nlohmann::json active_station_history;
     int auto_hop_remaining_seconds;
     int auto_hop_total_duration;
-    std::string temporary_status_message; // New field for UI feedback
+    std::string temporary_status_message;      // New field for UI feedback
+    bool is_volume_offset_mode_active = false; // Is the offset slider visible?
 };
 
 #endif // STATESNAPSHOT_H

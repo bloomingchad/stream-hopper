@@ -18,7 +18,7 @@ RadioStream::RadioStream(int id, std::string name, std::vector<std::string> urls
       m_pending_title(""), m_pending_bitrate(0), m_cycle_start_time(std::nullopt), m_current_title("..."), m_bitrate(0),
       m_playback_state(PlaybackState::Playing), m_current_volume(0.0), m_pre_mute_volume(100.0), m_is_fading(false),
       m_target_volume(0.0), m_is_favorite(false), m_has_logged_first_song(false), m_is_buffering(false),
-      m_mute_start_time(std::nullopt) {}
+      m_mute_start_time(std::nullopt), m_volume_offset(0.0) {}
 
 RadioStream::RadioStream(RadioStream&& other) noexcept
     : m_id(other.m_id), m_name(std::move(other.m_name)), m_urls(std::move(other.m_urls)),
@@ -32,7 +32,7 @@ RadioStream::RadioStream(RadioStream&& other) noexcept
       m_pre_mute_volume(other.m_pre_mute_volume), m_is_fading(other.m_is_fading),
       m_target_volume(other.m_target_volume), m_is_favorite(other.m_is_favorite),
       m_has_logged_first_song(other.m_has_logged_first_song), m_is_buffering(other.m_is_buffering),
-      m_mute_start_time(std::move(other.m_mute_start_time)) {}
+      m_mute_start_time(std::move(other.m_mute_start_time)), m_volume_offset(other.m_volume_offset) {}
 
 RadioStream& RadioStream::operator=(RadioStream&& other) noexcept {
     if (this != &other) {
@@ -60,6 +60,7 @@ RadioStream& RadioStream::operator=(RadioStream&& other) noexcept {
         m_has_logged_first_song = other.m_has_logged_first_song;
         m_is_buffering = other.m_is_buffering;
         m_mute_start_time = std::move(other.m_mute_start_time);
+        m_volume_offset = other.m_volume_offset;
     }
     return *this;
 }
@@ -102,7 +103,8 @@ void RadioStream::initialize(double initial_volume) {
     m_current_volume = initial_volume;
     m_target_volume = initial_volume;
 
-    mpv_set_property_async(mpv, 0, "volume", MPV_FORMAT_DOUBLE, &initial_volume);
+    // The final combined volume will be set by StationManager::applyCombinedVolume
+    // We no longer set it directly here.
 
     m_is_initialized = true;
     setCurrentTitle("Initializing...");
@@ -156,7 +158,7 @@ std::optional<std::chrono::steady_clock::time_point> RadioStream::getCycleStartT
 std::chrono::steady_clock::time_point RadioStream::getCycleStatusEndTime() const { return m_cycle_status_end_time; }
 const std::string& RadioStream::getNextUrl() const { return m_urls[(m_active_url_index + 1) % m_urls.size()]; }
 MpvInstance& RadioStream::getPendingMpvInstance() { return m_pending_mpv_instance; }
-const std::string& RadioStream::getPendingTitle() const { return m_pending_title; } // <-- ADD THIS IMPLEMENTATION
+const std::string& RadioStream::getPendingTitle() const { return m_pending_title; }
 
 bool RadioStream::isInitialized() const { return m_is_initialized; }
 int RadioStream::getGeneration() const { return m_generation; }
@@ -189,3 +191,5 @@ void RadioStream::setBuffering(bool buffering) { m_is_buffering = buffering; }
 std::optional<std::chrono::steady_clock::time_point> RadioStream::getMuteStartTime() const { return m_mute_start_time; }
 void RadioStream::setMuteStartTime() { m_mute_start_time = std::chrono::steady_clock::now(); }
 void RadioStream::resetMuteStartTime() { m_mute_start_time = std::nullopt; }
+double RadioStream::getVolumeOffset() const { return m_volume_offset; }
+void RadioStream::setVolumeOffset(double offset) { m_volume_offset = offset; }

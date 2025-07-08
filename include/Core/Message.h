@@ -25,6 +25,11 @@ namespace Msg {
     struct SearchOnline {
         char key;
     };
+
+    // Volume Normalization Messages
+    struct AdjustVolumeOffsetUp {};
+    struct AdjustVolumeOffsetDown {};
+    struct SaveVolumeOffsets {};
 }
 
 using StationManagerMessage = std::variant<Msg::NavigateUp,
@@ -39,6 +44,9 @@ using StationManagerMessage = std::variant<Msg::NavigateUp,
                                            Msg::CycleUrl,
                                            Msg::UpdateAndPoll,
                                            Msg::Quit,
-                                           Msg::SearchOnline>;
+                                           Msg::SearchOnline,
+                                           Msg::AdjustVolumeOffsetUp,
+                                           Msg::AdjustVolumeOffsetDown,
+                                           Msg::SaveVolumeOffsets>;
 
 #endif // MESSAGE_H

@@ -15,6 +15,7 @@
 #include "Core/MpvEventHandler.h"
 #include "Core/SystemHandler.h"
 #include "Core/UpdateManager.h"
+#include "Core/VolumeNormalizer.h"
 #include "PersistenceManager.h"
 #include "SessionState.h"
 #include "Utils.h"
@@ -80,9 +81,14 @@ StationManager::StationManager(const StationData& station_data)
     }
 
     const auto favorite_names = persistence.loadFavoriteNames();
+    const auto volume_offsets = persistence.loadVolumeOffsets();
+
     for (auto& station : m_stations) {
         if (favorite_names.count(station.getName())) {
             station.toggleFavorite();
+        }
+        if (volume_offsets.count(station.getName())) {
+            station.setVolumeOffset(volume_offsets.at(station.getName()));
         }
         if (!m_song_history->contains(station.getName())) {
             (*m_song_history)[station.getName()] = nlohmann::json::array();
@@ -101,6 +107,7 @@ StationManager::StationManager(const StationData& station_data)
     m_action_handler = std::make_unique<ActionHandler>();
     m_system_handler = std::make_unique<SystemHandler>();
     m_update_manager = std::make_unique<UpdateManager>();
+    m_volume_normalizer = std::make_unique<VolumeNormalizer>();
     m_actor_thread = std::thread(&StationManager::actorLoop, this);
 }
 
@@ -112,6 +119,7 @@ StationManager::~StationManager() {
     PersistenceManager persistence;
     persistence.saveHistory(*m_song_history);
     persistence.saveFavorites(m_stations);
+    saveVolumeOffsetsToDisk(); // Save any pending volume changes
     if (!m_stations.empty() && m_session_state.active_station_idx >= 0 &&
         m_session_state.active_station_idx < (int) m_stations.size()) {
         persistence.saveSession(m_stations[m_session_state.active_station_idx].getName());
@@ -144,21 +152,15 @@ StateSnapshot StationManager::createSnapshot() const {
     snapshot.history_scroll_offset = m_session_state.history_scroll_offset;
     snapshot.hopper_mode = m_session_state.hopper_mode;
     snapshot.temporary_status_message = m_session_state.temporary_status_message;
+    snapshot.is_volume_offset_mode_active = m_volume_normalizer->isUiActive();
     snapshot.stations.reserve(m_stations.size());
     for (const auto& station : m_stations) {
         // FIX: Replaced C++20 designated initializers with C++17 aggregate initialization
-        snapshot.stations.push_back({station.getName(),
-                                     station.getCurrentTitle(),
-                                     station.getBitrate(),
-                                     station.getCurrentVolume(),
-                                     station.isInitialized(),
-                                     station.isFavorite(),
-                                     station.isBuffering(),
-                                     station.getPlaybackState(),
-                                     station.getCyclingState(),
-                                     station.getPendingTitle(),
-                                     station.getPendingBitrate(),
-                                     station.getAllUrls().size()});
+        snapshot.stations.push_back({station.getName(), station.getCurrentTitle(), station.getBitrate(),
+                                     station.getCurrentVolume(), station.isInitialized(), station.isFavorite(),
+                                     station.isBuffering(), station.getPlaybackState(), station.getCyclingState(),
+                                     station.getPendingTitle(), station.getPendingBitrate(),
+                                     station.getAllUrls().size(), station.getVolumeOffset()});
     }
     snapshot.current_volume_for_header = 0.0;
     if (!snapshot.stations.empty()) {
@@ -219,7 +221,8 @@ void StationManager::actorLoop() {
             current_queue.push_back(Msg::UpdateAndPoll{});
         }
         for (auto& msg : current_queue) {
-            if (std::holds_alternative<Msg::UpdateAndPoll>(msg) || std::holds_alternative<Msg::Quit>(msg)) {
+            if (std::holds_alternative<Msg::UpdateAndPoll>(msg) || std::holds_alternative<Msg::Quit>(msg) ||
+                std::holds_alternative<Msg::SaveVolumeOffsets>(msg)) {
                 m_system_handler->process_system(*this, msg);
             } else {
                 m_action_handler->process_action(*this, msg);
@@ -271,6 +274,23 @@ void StationManager::pollMpvEvents() {
             }
         }
     }
+}
+
+void StationManager::applyCombinedVolume(int station_id, bool for_pending) {
+    if (station_id < 0 || station_id >= (int) m_stations.size())
+        return;
+
+    RadioStream& station = m_stations[station_id];
+    mpv_handle* handle = for_pending ? station.getPendingMpvInstance().get() : station.getMpvHandle();
+    if (!handle)
+        return;
+
+    double base_volume = for_pending ? 0.0 : station.getCurrentVolume();
+    double offset = for_pending ? 0.0 : station.getVolumeOffset(); // No offset on pending streams
+    double final_volume = std::clamp(base_volume + offset, 0.0, 150.0);
+
+    mpv_set_property_async(handle, 0, "volume", MPV_FORMAT_DOUBLE, &final_volume);
+    m_needs_redraw = true;
 }
 
 void StationManager::fadeAudio(int station_id, double to_vol, int duration_ms, bool for_pending) {
@@ -327,6 +347,7 @@ void StationManager::initializeStation(int station_idx) {
         return;
     double vol = (station_idx == m_session_state.active_station_idx) ? 100.0 : 0.0;
     m_stations[station_idx].initialize(vol);
+    applyCombinedVolume(station_idx);
     m_active_station_indices.insert(station_idx);
 }
 
@@ -341,6 +362,18 @@ void StationManager::saveHistoryToDisk() {
     PersistenceManager persistence;
     persistence.saveHistory(*m_song_history);
     m_unsaved_history_count = 0;
+}
+
+void StationManager::saveVolumeOffsetsToDisk() {
+    PersistenceManager persistence;
+    std::map<std::string, double> offsets;
+    for (const auto& station : m_stations) {
+        // Only save non-default values to keep the file clean
+        if (std::abs(station.getVolumeOffset()) > 0.01) {
+            offsets[station.getName()] = station.getVolumeOffset();
+        }
+    }
+    persistence.saveVolumeOffsets(offsets);
 }
 
 void StationManager::addHistoryEntry(const std::string& station_name, const nlohmann::json& entry) {

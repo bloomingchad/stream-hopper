@@ -33,7 +33,7 @@ void MpvEventHandler::handleEvent(mpv_event* event) {
         // This logic is specific and small, so it can stay here.
         if (event->reply_userdata >= PENDING_INSTANCE_ID_OFFSET) {
             int station_id = event->reply_userdata - PENDING_INSTANCE_ID_OFFSET;
-            if (station_id >= 0 && station_id < (int) m_manager.m_stations.size()) {
+            if (station_id < (int) m_manager.m_stations.size()) { // The 'station_id >= 0' check is removed here.
                 auto& station = m_manager.m_stations[station_id];
                 if (station.getCyclingState() == CyclingState::CYCLING) {
                     station.finalizeCycle(false); // Cycle failed on EOF

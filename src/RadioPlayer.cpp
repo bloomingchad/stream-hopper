@@ -21,6 +21,8 @@ RadioPlayer::RadioPlayer(StationManager& manager) : m_station_manager(manager) {
     m_input_handlers = {
         {KEY_UP, Msg::NavigateUp{}},
         {KEY_DOWN, Msg::NavigateDown{}},
+        {KEY_LEFT, Msg::AdjustVolumeOffsetDown{}},
+        {KEY_RIGHT, Msg::AdjustVolumeOffsetUp{}},
         {KEY_ENTER, Msg::ToggleMute{}},
         {' ', Msg::ToggleMute{}},
         {'\n', Msg::ToggleMute{}},

@@ -13,6 +13,7 @@ class SystemHandler {
   private:
     void handle_updateAndPoll(StationManager& manager);
     void handle_quit(StationManager& manager);
+    void handle_saveVolumeOffsets(StationManager& manager);
 
     // Private helpers for each timer-based check
     void check_copy_mode_timeout(StationManager& manager);

@@ -24,6 +24,7 @@ class ActionHandler {
     void handle_switchPanel(StationManager& manager);
     void handle_cycleUrl(StationManager& manager);
     void handle_searchOnline(StationManager& manager, char key);
+    void handle_adjustVolumeOffset(StationManager& manager, double amount);
 };
 
 #endif // ACTIONHANDLER_H

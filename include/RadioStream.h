@@ -47,7 +47,7 @@ class RadioStream {
     std::chrono::steady_clock::time_point getCycleStatusEndTime() const;
     const std::string& getNextUrl() const;
     MpvInstance& getPendingMpvInstance();
-    const std::string& getPendingTitle() const; // <-- ADD THIS DECLARATION
+    const std::string& getPendingTitle() const;
     int getPendingBitrate() const;
     std::optional<std::chrono::steady_clock::time_point> getCycleStartTime() const;
     // ------------------------------------
@@ -85,6 +85,10 @@ class RadioStream {
     void setMuteStartTime();
     void resetMuteStartTime();
 
+    // --- Volume Normalization ---
+    double getVolumeOffset() const;
+    void setVolumeOffset(double offset);
+
   private:
     int m_id;
     std::string m_name;
@@ -112,6 +116,7 @@ class RadioStream {
     bool m_has_logged_first_song;
     bool m_is_buffering;
     std::optional<std::chrono::steady_clock::time_point> m_mute_start_time;
+    double m_volume_offset;
 };
 
 #endif // RADIOSTREAM_H

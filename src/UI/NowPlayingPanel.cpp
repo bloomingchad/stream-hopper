@@ -2,9 +2,11 @@
 
 #include <ncurses.h>
 
+#include <iomanip>
 #include <sstream>
 #include <vector>
 
+#include "Core/VolumeNormalizer.h" // Include for MAX_OFFSET
 #include "UI/UIUtils.h"
 
 namespace {
@@ -67,9 +69,45 @@ void NowPlayingPanel::draw(const StateSnapshot& snapshot) {
 
     if (snapshot.is_auto_hop_mode_active) {
         drawAutoHopView(inner_w, snapshot.auto_hop_remaining_seconds, snapshot.auto_hop_total_duration);
+    } else if (snapshot.is_volume_offset_mode_active) {
+        drawVolumeOffsetBar(station, inner_w);
     } else {
         drawNormalView(station, inner_w);
     }
+}
+
+void NowPlayingPanel::drawVolumeOffsetBar(const StationDisplayData& station, int inner_w) {
+    int bar_width = inner_w - 14; // Room for "🎚️ NORM [...] +10.0"
+    if (bar_width <= 0)
+        return;
+
+    mvwprintw(stdscr, m_y + 1, m_x + 3, "🎚️ NORM [");
+    int bar_start_x = m_x + 12;
+
+    int center_point = bar_width / 2;
+    double offset = station.volume_offset;
+    // Use the public constant for the range calculation
+    int fill_width = static_cast<int>((offset / VolumeNormalizer::MAX_OFFSET) * center_point);
+
+    attron(COLOR_PAIR(9)); // Yellow
+    for (int i = 0; i < bar_width; ++i) {
+        if (fill_width > 0 && i >= center_point && i < center_point + fill_width) {
+            mvwaddch(stdscr, m_y + 1, bar_start_x + i, ACS_BLOCK);
+        } else if (fill_width < 0 && i < center_point && i >= center_point + fill_width) {
+            mvwaddch(stdscr, m_y + 1, bar_start_x + i, ACS_BLOCK);
+        } else if (i == center_point) {
+            mvwaddch(stdscr, m_y + 1, bar_start_x + i, ACS_VLINE);
+        } else {
+            mvwaddch(stdscr, m_y + 1, bar_start_x + i, ACS_CKBOARD);
+        }
+    }
+    attroff(COLOR_PAIR(9));
+
+    mvwprintw(stdscr, m_y + 1, bar_start_x + bar_width, "]");
+
+    std::stringstream ss;
+    ss << std::fixed << std::showpos << std::setprecision(1) << offset;
+    mvwprintw(stdscr, m_y + 1, bar_start_x + bar_width + 2, "%s", ss.str().c_str());
 }
 
 void NowPlayingPanel::drawCycleStatus(const StationDisplayData& station, int inner_w) {

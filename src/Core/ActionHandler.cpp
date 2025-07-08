@@ -4,6 +4,7 @@
 #include <utility> // For std::move
 #include <variant>
 
+#include "Core/VolumeNormalizer.h"
 #include "RadioStream.h"
 #include "SessionState.h"
 #include "StationManager.h"
@@ -13,6 +14,7 @@ namespace {
     constexpr int FADE_TIME_MS = 900;
     constexpr double DUCK_VOLUME = 40.0;
     constexpr int PENDING_INSTANCE_ID_OFFSET = 10000;
+    constexpr double VOLUME_ADJUST_AMOUNT = 1.0;
 }
 
 void ActionHandler::process_action(StationManager& manager, const StationManagerMessage& msg) {
@@ -41,8 +43,29 @@ void ActionHandler::process_action(StationManager& manager, const StationManager
                 handle_cycleUrl(manager);
             else if constexpr (std::is_same_v<T, Msg::SearchOnline>)
                 handle_searchOnline(manager, arg.key);
+            else if constexpr (std::is_same_v<T, Msg::AdjustVolumeOffsetUp>)
+                handle_adjustVolumeOffset(manager, VOLUME_ADJUST_AMOUNT);
+            else if constexpr (std::is_same_v<T, Msg::AdjustVolumeOffsetDown>)
+                handle_adjustVolumeOffset(manager, -VOLUME_ADJUST_AMOUNT);
         },
         msg);
+}
+
+void ActionHandler::handle_adjustVolumeOffset(StationManager& manager, double amount) {
+    if (manager.m_session_state.active_station_idx < 0 ||
+        manager.m_session_state.active_station_idx >= (int) manager.m_stations.size()) {
+        return;
+    }
+    if (manager.m_session_state.active_panel == ActivePanel::HISTORY) {
+        return; // Don't adjust volume when scrolling history
+    }
+
+    RadioStream& station = manager.m_stations[manager.m_session_state.active_station_idx];
+    if (!station.isInitialized()) {
+        return;
+    }
+    manager.m_volume_normalizer->adjust(manager, station, amount);
+    manager.m_needs_redraw = true;
 }
 
 void ActionHandler::handle_searchOnline(StationManager& manager, char key) {
@@ -146,9 +169,8 @@ void ActionHandler::handle_cycleUrl(StationManager& manager) {
 
     MpvInstance& pending_instance = station.getPendingMpvInstance();
     pending_instance.initialize(station.getNextUrl());
+    manager.applyCombinedVolume(station.getID(), true); // Apply 0 volume to pending
 
-    double vol = 0.0;
-    mpv_set_property(pending_instance.get(), "volume", MPV_FORMAT_DOUBLE, &vol);
     const char* cmd[] = {"loadfile", station.getNextUrl().c_str(), "replace", nullptr};
     check_mpv_error(mpv_command_async(pending_instance.get(), 0, cmd), "loadfile for pending cycle");
 

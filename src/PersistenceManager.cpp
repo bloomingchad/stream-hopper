@@ -13,6 +13,7 @@ using nlohmann::json;
 const std::string FAVORITES_FILENAME = "radio_favorites.json";
 const std::string SESSION_FILENAME = "radio_session.json";
 const std::string HISTORY_FILENAME = "radio_history.json";
+const std::string VOLUME_OFFSETS_FILENAME = "volume_offsets.jsonc";
 
 std::optional<std::pair<std::string, std::vector<std::string>>>
 PersistenceManager::parse_single_station_entry(const json& station_entry) const {
@@ -180,5 +181,34 @@ void PersistenceManager::saveSession(const std::string& last_station_name) const
     std::ofstream o(SESSION_FILENAME);
     if (o.is_open()) {
         o << std::setw(4) << session_data << std::endl;
+    }
+}
+
+std::map<std::string, double> PersistenceManager::loadVolumeOffsets() const {
+    std::map<std::string, double> offsets;
+    std::ifstream i(VOLUME_OFFSETS_FILENAME);
+    if (!i.is_open()) {
+        return offsets;
+    }
+    try {
+        json data = json::parse(i, nullptr, true, true);
+        if (data.is_object()) {
+            for (auto& [key, value] : data.items()) {
+                if (value.is_number()) {
+                    offsets[key] = value.get<double>();
+                }
+            }
+        }
+    } catch (const json::parse_error&) {
+        // Silently ignore parse errors for this non-critical file
+    }
+    return offsets;
+}
+
+void PersistenceManager::saveVolumeOffsets(const std::map<std::string, double>& offsets) const {
+    json data = offsets;
+    std::ofstream o(VOLUME_OFFSETS_FILENAME);
+    if (o.is_open()) {
+        o << std::setw(4) << data << std::endl;
     }
 }

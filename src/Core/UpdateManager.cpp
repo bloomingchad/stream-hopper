@@ -3,6 +3,7 @@
 #include <algorithm> // For std::any_of, std::remove_if
 #include <chrono>
 
+#include "Core/VolumeNormalizer.h"
 #include "RadioStream.h"
 #include "StationManager.h"
 
@@ -16,6 +17,14 @@ void UpdateManager::process_updates(StationManager& manager) {
     handle_cycle_status_timers(manager);
     handle_cycle_timeouts(manager);
     handle_activeFades(manager);
+    handle_volume_normalizer_timeout(manager);
+}
+
+void UpdateManager::handle_volume_normalizer_timeout(StationManager& manager) {
+    if (manager.m_volume_normalizer->checkTimeout()) {
+        manager.post(Msg::SaveVolumeOffsets{});
+        manager.m_needs_redraw = true;
+    }
 }
 
 void UpdateManager::handle_temporary_message_timer(StationManager& manager) {
@@ -87,10 +96,11 @@ void UpdateManager::handle_activeFades(StationManager& manager) {
 
                            if (!fade.is_for_pending_instance) {
                                station.setCurrentVolume(new_vol);
+                               manager.applyCombinedVolume(fade.station_id);
+                           } else {
+                               double final_pending_vol = std::clamp(new_vol, 0.0, 150.0);
+                               mpv_set_property_async(handle, 0, "volume", MPV_FORMAT_DOUBLE, &final_pending_vol);
                            }
-
-                           double clamped_vol = std::max(0.0, std::min(100.0, new_vol));
-                           mpv_set_property_async(handle, 0, "volume", MPV_FORMAT_DOUBLE, &clamped_vol);
                            changed = true;
 
                            if (progress >= 1.0) {
@@ -98,6 +108,7 @@ void UpdateManager::handle_activeFades(StationManager& manager) {
                                    station.promotePendingMetadata();
                                    station.promotePendingToActive();
                                    station.setCurrentVolume(fade.target_vol);
+                                   manager.applyCombinedVolume(fade.station_id);
                                    station.finalizeCycle(true);
                                } else if (station.getCyclingState() == CyclingState::SUCCEEDED) {
                                    station.getPendingMpvInstance().shutdown();
