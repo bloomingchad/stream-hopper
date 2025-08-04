@@ -1,9 +1,11 @@
 #include "Core/ActionHandler.h"
 
 #include <chrono>
+#include <future>
 #include <utility> // For std::move
 #include <variant>
 
+#include "CliHandler.h"
 #include "Core/VolumeNormalizer.h"
 #include "RadioStream.h"
 #include "SessionState.h"
@@ -15,6 +17,8 @@ namespace {
     constexpr double DUCK_VOLUME = 40.0;
     constexpr int PENDING_INSTANCE_ID_OFFSET = 10000;
     constexpr double VOLUME_ADJUST_AMOUNT = 1.0;
+    constexpr int RANDOM_STATIONS_FETCH_BATCH_SIZE = 50; // Fetch more to account for duplicates
+    constexpr int RANDOM_STATIONS_FETCH_THRESHOLD = 5;
 }
 
 void ActionHandler::process_action(StationManager& manager, const StationManagerMessage& msg) {
@@ -37,6 +41,10 @@ void ActionHandler::process_action(StationManager& manager, const StationManager
                 handle_toggleCopyMode(manager);
             else if constexpr (std::is_same_v<T, Msg::ToggleHopperMode>)
                 handle_toggleHopperMode(manager);
+            else if constexpr (std::is_same_v<T, Msg::EnterRandomMode>)
+                handle_enterRandomMode(manager);
+            else if constexpr (std::is_same_v<T, Msg::FetchMoreRandomStations>)
+                handle_fetchMoreRandomStations(manager);
             else if constexpr (std::is_same_v<T, Msg::SwitchPanel>)
                 handle_switchPanel(manager);
             else if constexpr (std::is_same_v<T, Msg::CycleUrl>)
@@ -49,6 +57,35 @@ void ActionHandler::process_action(StationManager& manager, const StationManager
                 handle_adjustVolumeOffset(manager, -VOLUME_ADJUST_AMOUNT);
         },
         msg);
+}
+
+void ActionHandler::handle_fetchMoreRandomStations(StationManager& manager) {
+    if (manager.m_is_fetching_random_stations) {
+        return; // Already fetching
+    }
+    manager.m_is_fetching_random_stations = true;
+    manager.m_fetch_is_for_append = true;
+    manager.m_random_stations_future = std::async(std::launch::async, []() {
+        CliHandler cli_handler;
+        return cli_handler.get_random_stations(RANDOM_STATIONS_FETCH_BATCH_SIZE);
+    });
+}
+
+void ActionHandler::handle_enterRandomMode(StationManager& manager) {
+    if (manager.m_is_fetching_random_stations) {
+        return;
+    }
+    manager.m_session_state.app_mode = AppMode::RANDOM;
+    manager.m_is_fetching_random_stations = true;
+    manager.m_fetch_is_for_append = false;
+    manager.m_seen_random_station_uuids.clear();
+    manager.m_random_stations_future = std::async(std::launch::async, []() {
+        CliHandler cli_handler;
+        return cli_handler.get_random_stations(RANDOM_STATIONS_FETCH_BATCH_SIZE);
+    });
+
+    // Clear existing stations and show loading state
+    manager.resetWithNewStations({});
 }
 
 void ActionHandler::handle_adjustVolumeOffset(StationManager& manager, double amount) {
@@ -109,8 +146,24 @@ void ActionHandler::handle_navigateStations(StationManager& manager, NavDirectio
         return;
     int station_count = manager.m_stations.size();
     int old_idx = manager.m_session_state.active_station_idx;
-    int new_idx = (direction == NavDirection::DOWN) ? (old_idx + 1) % station_count
-                                                    : (old_idx - 1 + station_count) % station_count;
+    int new_idx = old_idx;
+
+    if (direction == NavDirection::DOWN) {
+        new_idx = old_idx + 1;
+        if (manager.m_session_state.app_mode == AppMode::CURATED && new_idx >= station_count) {
+            new_idx = 0; // Wrap around in curated mode
+        } else if (new_idx >= station_count) {
+            new_idx = station_count - 1; // Don't go past the end in random mode
+        }
+    } else { // NavDirection::UP
+        new_idx = old_idx - 1;
+        if (manager.m_session_state.app_mode == AppMode::CURATED && new_idx < 0) {
+            new_idx = station_count - 1; // Wrap around
+        } else if (new_idx < 0) {
+            new_idx = 0; // Don't go past the start
+        }
+    }
+
     if (new_idx != old_idx) {
         RadioStream& current_station = manager.m_stations[old_idx];
         if (current_station.isInitialized() && current_station.getPlaybackState() != PlaybackState::Muted) {
@@ -119,6 +172,7 @@ void ActionHandler::handle_navigateStations(StationManager& manager, NavDirectio
         manager.m_session_state.session_switches++;
         manager.m_session_state.last_switch_time = std::chrono::steady_clock::now();
     }
+
     manager.m_session_state.active_station_idx = new_idx;
     manager.m_session_state.nav_history.push_back({direction, std::chrono::steady_clock::now()});
     if (manager.m_session_state.nav_history.size() > manager.MAX_NAV_HISTORY) {
@@ -126,6 +180,12 @@ void ActionHandler::handle_navigateStations(StationManager& manager, NavDirectio
     }
     manager.updateActiveWindow();
     manager.m_session_state.history_scroll_offset = 0;
+
+    // Check if we need to fetch more stations
+    if (manager.m_session_state.app_mode == AppMode::RANDOM && !manager.m_is_fetching_random_stations &&
+        (station_count - new_idx <= RANDOM_STATIONS_FETCH_THRESHOLD)) {
+        manager.post(Msg::FetchMoreRandomStations{});
+    }
 }
 
 void ActionHandler::handle_navigateHistory(StationManager& manager, NavDirection direction) {

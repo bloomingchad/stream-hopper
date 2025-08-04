@@ -32,6 +32,7 @@ RadioPlayer::RadioPlayer(StationManager& manager) : m_station_manager(manager) {
         {'d', Msg::ToggleDucking{}},
         {'c', Msg::ToggleCopyMode{}},
         {'p', Msg::ToggleHopperMode{}},
+        {'r', Msg::EnterRandomMode{}},
         {'q', Msg::Quit{}},
         {'\t', Msg::SwitchPanel{}},
         {'+', Msg::CycleUrl{}},

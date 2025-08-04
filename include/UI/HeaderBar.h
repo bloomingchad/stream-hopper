@@ -6,7 +6,7 @@
 
 class HeaderBar : public Panel {
   public:
-    void draw(double current_volume, HopperMode hopper_mode);
+    void draw(double current_volume, HopperMode hopper_mode, AppMode app_mode, bool is_fetching);
 };
 
 #endif // HEADERBAR_H

@@ -4,20 +4,65 @@
 #include <chrono>
 
 #include "Core/VolumeNormalizer.h"
+#include "PersistenceManager.h" // For StationData
 #include "RadioStream.h"
 #include "StationManager.h"
 
 namespace {
     // Constants related to update logic
     constexpr int CYCLE_TIMEOUT_SECONDS = 8;
+    constexpr int RANDOM_STATIONS_TARGET_COUNT = 15;
 }
 
 void UpdateManager::process_updates(StationManager& manager) {
+    handle_random_station_fetch(manager);
     handle_temporary_message_timer(manager);
     handle_cycle_status_timers(manager);
     handle_cycle_timeouts(manager);
     handle_activeFades(manager);
     handle_volume_normalizer_timeout(manager);
+    if (manager.m_is_fetching_random_stations) {
+        manager.m_needs_redraw = true; // Keep UI animating while spinner is active
+    }
+}
+
+void UpdateManager::handle_random_station_fetch(StationManager& manager) {
+    if (!manager.m_is_fetching_random_stations || !manager.m_random_stations_future.valid()) {
+        return;
+    }
+
+    // Check if the future is ready without blocking
+    if (manager.m_random_stations_future.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        auto fetched_stations = manager.m_random_stations_future.get();
+        manager.m_is_fetching_random_stations = false;
+
+        if (fetched_stations.empty()) {
+            manager.m_session_state.temporary_status_message = "[Error] Failed to fetch stations.";
+            manager.m_session_state.temporary_message_end_time =
+                std::chrono::steady_clock::now() + std::chrono::seconds(3);
+        } else {
+            StationData new_station_data;
+            for (const auto& s : fetched_stations) {
+                if (manager.m_seen_random_station_uuids.find(s.stationuuid) ==
+                    manager.m_seen_random_station_uuids.end()) {
+                    new_station_data.push_back({s.name, s.urls});
+                    manager.m_seen_random_station_uuids.insert(s.stationuuid);
+                    if (new_station_data.size() >= RANDOM_STATIONS_TARGET_COUNT) {
+                        break;
+                    }
+                }
+            }
+
+            if (manager.m_fetch_is_for_append) {
+                if (!new_station_data.empty()) {
+                    manager.appendStations(new_station_data);
+                }
+            } else {
+                manager.resetWithNewStations(new_station_data);
+            }
+        }
+        manager.m_needs_redraw = true;
+    }
 }
 
 void UpdateManager::handle_volume_normalizer_timeout(StationManager& manager) {

@@ -21,6 +21,8 @@ namespace Msg {
     struct CycleUrl {};
     struct UpdateAndPoll {};
     struct Quit {};
+    struct EnterRandomMode {};
+    struct FetchMoreRandomStations {};
     // The message now carries the character key the user pressed.
     struct SearchOnline {
         char key;
@@ -44,6 +46,8 @@ using StationManagerMessage = std::variant<Msg::NavigateUp,
                                            Msg::CycleUrl,
                                            Msg::UpdateAndPoll,
                                            Msg::Quit,
+                                           Msg::EnterRandomMode,
+                                           Msg::FetchMoreRandomStations,
                                            Msg::SearchOnline,
                                            Msg::AdjustVolumeOffsetUp,
                                            Msg::AdjustVolumeOffsetDown,

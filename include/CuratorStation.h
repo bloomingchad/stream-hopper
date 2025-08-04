@@ -6,6 +6,7 @@
 
 // A struct to hold all the rich data for a station being reviewed in Curator Mode.
 struct CuratorStation {
+    std::string stationuuid; // The unique ID for the station
     std::string name;
     std::vector<std::string> urls;
     std::string country_code;

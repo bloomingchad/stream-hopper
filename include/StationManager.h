@@ -4,6 +4,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <deque>
+#include <future>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -15,9 +16,7 @@
 
 #include "Core/Message.h"
 #include "Core/PreloadStrategy.h"
-#include "Core/UpdateManager.h"
-#include "Core/VolumeNormalizer.h"
-#include "PersistenceManager.h"
+#include "PersistenceManager.h" // For StationData
 #include "RadioStream.h"
 #include "SessionState.h"
 #include "UI/StateSnapshot.h"
@@ -27,6 +26,8 @@
 class MpvEventHandler;
 class ActionHandler;
 class SystemHandler;
+class UpdateManager;
+class VolumeNormalizer;
 
 // New struct to hold search provider config
 struct SearchProvider {
@@ -113,6 +114,8 @@ class StationManager {
 
     // Centralized volume logic to be called by handlers/managers
     void applyCombinedVolume(int station_id, bool for_pending = false);
+    void resetWithNewStations(const StationData& station_data);
+    void appendStations(const StationData& station_data);
 
   private:
     friend class MpvEventHandler;
@@ -148,6 +151,7 @@ class StationManager {
     std::vector<RadioStream> m_stations;
     std::vector<ActiveFade> m_active_fades;
     std::unordered_set<int> m_active_station_indices;
+    std::unordered_set<std::string> m_seen_random_station_uuids;
     Strategy::Preloader m_preloader;
     std::unique_ptr<MpvEventHandler> m_event_handler;
     std::unique_ptr<ActionHandler> m_action_handler;
@@ -157,6 +161,11 @@ class StationManager {
     std::unique_ptr<nlohmann::json> m_song_history;
     int m_unsaved_history_count;
     std::map<char, SearchProvider> m_search_providers; // Store config here
+
+    // Async Fetching State
+    std::atomic<bool> m_is_fetching_random_stations;
+    std::future<std::vector<CuratorStation>> m_random_stations_future;
+    bool m_fetch_is_for_append;
 
     // Encapsulated Application State
     SessionState m_session_state;

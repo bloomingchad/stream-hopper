@@ -30,13 +30,14 @@ namespace {
         }
         for (const auto& entry : stations_json) {
             CuratorStation station;
+            station.stationuuid = entry.value("stationuuid", "");
             station.name = entry.value("name", "Unknown");
             if (entry.contains("url_resolved") && !entry.at("url_resolved").is_null()) {
                 station.urls.push_back(entry.at("url_resolved").get<std::string>());
             }
             station.votes = entry.value("votes", 0);
 
-            if (!station.name.empty() && !station.urls.empty()) {
+            if (!station.stationuuid.empty() && !station.name.empty() && !station.urls.empty()) {
                 candidates.push_back(station);
             }
         }
@@ -146,6 +147,24 @@ namespace {
         close(dev_null);
     }
 } // namespace
+
+std::vector<CuratorStation> CliHandler::get_random_stations(int limit) {
+    try {
+        std::string path = "/json/stations/search?order=random&hidebroken=true&limit=" + std::to_string(limit);
+        std::string command = "./build/api_helper.sh '" + path + "'";
+        std::string stations_json_str = exec_process(command.c_str());
+
+        if (stations_json_str.empty() || stations_json_str.rfind("Error:", 0) == 0) {
+            std::cerr << "Error fetching random stations: " << stations_json_str << std::endl;
+            return {};
+        }
+        json stations_json = json::parse(stations_json_str);
+        return parse_station_candidates(stations_json);
+    } catch (const std::exception& e) {
+        std::cerr << "\nAn error occurred while fetching random stations: " << e.what() << std::endl;
+        return {};
+    }
+}
 
 std::vector<std::string> CliHandler::get_curated_tags() {
     try {

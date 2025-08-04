@@ -17,6 +17,9 @@ class CliHandler {
     // --- New programmatic methods for the Wizard ---
     std::vector<std::string> get_curated_tags();
     std::vector<CuratorStation> get_curation_candidates(const std::string& genre);
+
+    // --- New programmatic method for Random Mode ---
+    std::vector<CuratorStation> get_random_stations(int limit);
 };
 
 #endif // CLIHANDLER_H

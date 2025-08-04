@@ -63,7 +63,8 @@ void StationManager::loadSearchProviders() {
 }
 
 StationManager::StationManager(const StationData& station_data)
-    : m_unsaved_history_count(0), m_session_state(), m_quit_flag(false), m_needs_redraw(true) {
+    : m_unsaved_history_count(0), m_is_fetching_random_stations(false), m_fetch_is_for_append(false),
+      m_session_state(), m_quit_flag(false), m_needs_redraw(true) {
     if (station_data.empty()) {
         throw std::runtime_error("No radio stations provided.");
     }
@@ -120,7 +121,8 @@ StationManager::~StationManager() {
     persistence.saveHistory(*m_song_history);
     persistence.saveFavorites(m_stations);
     saveVolumeOffsetsToDisk(); // Save any pending volume changes
-    if (!m_stations.empty() && m_session_state.active_station_idx >= 0 &&
+    if (m_session_state.app_mode == AppMode::CURATED && !m_stations.empty() &&
+        m_session_state.active_station_idx >= 0 &&
         m_session_state.active_station_idx < (int) m_stations.size()) {
         persistence.saveSession(m_stations[m_session_state.active_station_idx].getName());
     }
@@ -142,17 +144,56 @@ StationManager::~StationManager() {
     }
 }
 
+void StationManager::appendStations(const StationData& station_data) {
+    size_t current_size = m_stations.size();
+    for (size_t i = 0; i < station_data.size(); ++i) {
+        m_stations.emplace_back(current_size + i, station_data[i].first, station_data[i].second);
+    }
+    // No need to reset state, just update the active window if needed
+    updateActiveWindow();
+    m_needs_redraw = true;
+}
+
+void StationManager::resetWithNewStations(const StationData& station_data) {
+    // 1. Shutdown all existing streams
+    for (int idx : m_active_station_indices) {
+        if (idx >= 0 && idx < (int) m_stations.size()) {
+            m_stations[idx].shutdown();
+        }
+    }
+    m_active_station_indices.clear();
+    m_active_fades.clear();
+
+    // 2. Replace the station list
+    m_stations.clear();
+    for (size_t i = 0; i < station_data.size(); ++i) {
+        m_stations.emplace_back(i, station_data[i].first, station_data[i].second);
+    }
+
+    // 3. Reset session and UI state
+    m_session_state.active_station_idx = 0;
+    m_session_state.history_scroll_offset = 0;
+    m_session_state.active_panel = ActivePanel::STATIONS;
+    m_session_state.nav_history.clear();
+
+    // 4. Initialize the new set of stations
+    updateActiveWindow();
+    m_needs_redraw = true;
+}
+
 StateSnapshot StationManager::createSnapshot() const {
     std::lock_guard<std::mutex> lock(m_stations_mutex);
     StateSnapshot snapshot;
     snapshot.active_station_idx = m_session_state.active_station_idx;
     snapshot.active_panel = m_session_state.active_panel;
+    snapshot.app_mode = m_session_state.app_mode;
     snapshot.is_copy_mode_active = m_session_state.copy_mode_active;
     snapshot.is_auto_hop_mode_active = m_session_state.auto_hop_mode_active;
     snapshot.history_scroll_offset = m_session_state.history_scroll_offset;
     snapshot.hopper_mode = m_session_state.hopper_mode;
     snapshot.temporary_status_message = m_session_state.temporary_status_message;
     snapshot.is_volume_offset_mode_active = m_volume_normalizer->isUiActive();
+    snapshot.is_fetching_stations = m_is_fetching_random_stations;
     snapshot.stations.reserve(m_stations.size());
     for (const auto& station : m_stations) {
         // FIX: Replaced C++20 designated initializers with C++17 aggregate initialization
@@ -163,7 +204,8 @@ StateSnapshot StationManager::createSnapshot() const {
                                      station.getAllUrls().size(), station.getVolumeOffset()});
     }
     snapshot.current_volume_for_header = 0.0;
-    if (!snapshot.stations.empty()) {
+    if (!m_stations.empty() && m_session_state.active_station_idx >= 0 &&
+        m_session_state.active_station_idx < (int) m_stations.size()) {
         const auto& active_station_data = snapshot.stations[snapshot.active_station_idx];
         if (active_station_data.is_initialized) {
             snapshot.current_volume_for_header =
@@ -175,6 +217,8 @@ StateSnapshot StationManager::createSnapshot() const {
         } else {
             snapshot.active_station_history = nlohmann::json::array();
         }
+    } else {
+        snapshot.active_station_idx = -1; // Indicate no active station
     }
     snapshot.auto_hop_total_duration = 0;
     if (!m_stations.empty()) {
@@ -315,6 +359,15 @@ void StationManager::fadeAudio(int station_id, double to_vol, int duration_ms, b
 }
 
 void StationManager::updateActiveWindow() {
+    if (m_stations.empty()) {
+        // If the list is empty (e.g., during a fetch), shutdown everything.
+        std::vector<int> to_shutdown(m_active_station_indices.begin(), m_active_station_indices.end());
+        for (int idx : to_shutdown) {
+            shutdownStation(idx);
+        }
+        return;
+    }
+
     const auto new_active_set =
         m_preloader.calculate_active_indices(m_session_state.active_station_idx, m_stations.size(),
                                              m_session_state.hopper_mode, m_session_state.nav_history);
@@ -377,7 +430,15 @@ void StationManager::saveVolumeOffsetsToDisk() {
 }
 
 void StationManager::addHistoryEntry(const std::string& station_name, const nlohmann::json& entry) {
-    (*m_song_history)[station_name].push_back(entry);
+    // FIX: This now robustly handles new stations and corrupted history entries.
+    if (m_song_history->contains(station_name) && (*m_song_history)[station_name].is_array()) {
+        (*m_song_history)[station_name].push_back(entry);
+    } else {
+        // If the key doesn't exist OR the value is corrupt (not an array),
+        // overwrite it with a new array containing the new entry.
+        (*m_song_history)[station_name] = nlohmann::json::array({entry});
+    }
+
     m_session_state.new_songs_found++;
     if (++m_unsaved_history_count >= HISTORY_WRITE_THRESHOLD) {
         saveHistoryToDisk();

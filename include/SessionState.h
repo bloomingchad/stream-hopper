@@ -16,6 +16,7 @@ struct SessionState {
     // Core State
     int active_station_idx = 0;
     HopperMode hopper_mode = HopperMode::BALANCED;
+    AppMode app_mode = AppMode::CURATED;
 
     // UI State
     ActivePanel active_panel = ActivePanel::STATIONS;

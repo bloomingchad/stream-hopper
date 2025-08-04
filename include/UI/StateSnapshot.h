@@ -31,6 +31,7 @@ struct StateSnapshot {
     std::vector<StationDisplayData> stations;
     int active_station_idx;
     ActivePanel active_panel;
+    AppMode app_mode;
     bool is_copy_mode_active;
     bool is_auto_hop_mode_active;
     int history_scroll_offset;
@@ -41,6 +42,7 @@ struct StateSnapshot {
     int auto_hop_total_duration;
     std::string temporary_status_message;      // New field for UI feedback
     bool is_volume_offset_mode_active = false; // Is the offset slider visible?
+    bool is_fetching_stations = false;         // Is a fetch for random stations in progress?
 };
 
 #endif // STATESNAPSHOT_H

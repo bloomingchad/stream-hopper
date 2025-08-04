@@ -28,4 +28,9 @@ enum class ActivePanel {
     HISTORY
 };
 
+enum class AppMode {
+    CURATED, // Playing from a user-provided file
+    RANDOM   // Playing from the dynamic random queue
+};
+
 #endif // APPSTATE_H

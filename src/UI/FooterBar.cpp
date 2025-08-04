@@ -6,13 +6,15 @@
 
 #include "UI/UIUtils.h"
 
-void FooterBar::draw(bool is_compact,
+void FooterBar::draw(AppMode app_mode,
+                     bool is_compact,
                      bool is_copy_mode_active,
                      bool is_auto_hop_mode_active,
                      bool can_cycle_url,
                      const std::string& temp_msg) {
     std::string footer_text;
     std::string cycle_text = can_cycle_url ? "[+] Cycle " : "";
+    std::string random_text = (app_mode == AppMode::CURATED) ? "[R] Random " : "";
     bool is_error_msg = false;
 
     if (!temp_msg.empty()) {
@@ -25,10 +27,10 @@ void FooterBar::draw(bool is_compact,
     } else if (is_auto_hop_mode_active) {
         footer_text = " [A] Stop Auto-Hop   [C] Search Online   [Q] Quit ";
     } else if (is_compact) {
-        footer_text =
-            " [P] Mode [A] Auto [↑↓ Nav] " + cycle_text + "[←→ Vol] [Tab] Panel [F] Fav [D] Duck [C] Search [Q] Quit ";
+        footer_text = "[P] Mode [A] Auto [↑↓ Nav] " + cycle_text + random_text +
+                      "[←→ Vol] [Tab] Panel [F] Fav [D] Duck [C] Search [Q] Quit ";
     } else {
-        footer_text = " [P] Mode [A] Auto-Hop [↑↓] Nav [←→] Station Vol [↵] Mute " + cycle_text +
+        footer_text = "[P] Mode [A] Auto-Hop [↑↓] Nav [←→] Station Vol [↵] Mute " + cycle_text + random_text +
                       "[D] Duck [⇥] Panel [F] Fav [C] Search [Q] Quit ";
     }
 
